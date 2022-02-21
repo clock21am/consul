@@ -163,7 +163,6 @@ type autoTLS struct {
 // manual stores the TLS CA and cert received from Configurator.Update which
 // generally comes from the agent configuration.
 type manual struct {
-	caPems []string
 	// caPool containing only the caPems. This CertPool should be used instead of
 	// the Configurator.caPool when only the Agent TLS CA is allowed.
 	caPool *x509.CertPool
@@ -190,7 +189,8 @@ type Configurator struct {
 	peerDatacenterUseTLS map[string]bool
 
 	internalRPC struct {
-		cert *tls.Certificate
+		cert   *tls.Certificate
+		caPems []string
 	}
 
 	// logger is not protected by a lock. It must never be changed after
@@ -222,7 +222,7 @@ func NewConfigurator(config Config, logger hclog.Logger) (*Configurator, error) 
 func (c *Configurator) ManualCAPems() []string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.manual.caPems
+	return c.internalRPC.caPems
 }
 
 // Update updates the internal configuration which is used to generate
@@ -254,7 +254,7 @@ func (c *Configurator) Update(config Config) error {
 
 	c.base = &config
 	c.internalRPC.cert = cert
-	c.manual.caPems = pems
+	c.internalRPC.caPems = pems
 	c.manual.caPool = manualCAPool
 	c.caPool = caPool
 	atomic.AddUint64(&c.version, 1)
@@ -270,7 +270,7 @@ func (c *Configurator) UpdateAutoTLSCA(connectCAPems []string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	pool, err := newX509CertPool(c.manual.caPems, c.autoTLS.extraCAPems, connectCAPems)
+	pool, err := newX509CertPool(c.internalRPC.caPems, c.autoTLS.extraCAPems, connectCAPems)
 	if err != nil {
 		return err
 	}
@@ -311,7 +311,7 @@ func (c *Configurator) UpdateAutoTLS(manualCAPems, connectCAPems []string, pub, 
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	pool, err := newX509CertPool(c.manual.caPems, manualCAPems, connectCAPems)
+	pool, err := newX509CertPool(c.internalRPC.caPems, manualCAPems, connectCAPems)
 	if err != nil {
 		return err
 	}
