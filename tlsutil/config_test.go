@@ -674,10 +674,10 @@ func TestConfigurator_CommonTLSConfigGetClientCertificate(t *testing.T) {
 
 	c2, err := loadKeyPair("../test/key/ourdomain.cer", "../test/key/ourdomain.key")
 	require.NoError(t, err)
-	c.autoTLS.cert = c2
+	c.internalRPC.autoTLS.cert = c2
 	cert, err = c.commonTLSConfig(false).GetClientCertificate(nil)
 	require.NoError(t, err)
-	require.Equal(t, c.autoTLS.cert, cert)
+	require.Equal(t, c.internalRPC.autoTLS.cert, cert)
 }
 
 func TestConfigurator_CommonTLSConfigGetCertificate(t *testing.T) {
@@ -691,10 +691,10 @@ func TestConfigurator_CommonTLSConfigGetCertificate(t *testing.T) {
 	// Setting a certificate as the auto-encrypt cert will return it as the regular server certificate
 	c1, err := loadKeyPair("../test/key/something_expired.cer", "../test/key/something_expired.key")
 	require.NoError(t, err)
-	c.autoTLS.cert = c1
+	c.internalRPC.autoTLS.cert = c1
 	cert, err = c.commonTLSConfig(false).GetCertificate(nil)
 	require.NoError(t, err)
-	require.Equal(t, c.autoTLS.cert, cert)
+	require.Equal(t, c.internalRPC.autoTLS.cert, cert)
 
 	// Setting a different certificate as a manual cert will override the auto-encrypt cert and instead return the manual cert
 	c2, err := loadKeyPair("../test/key/ourdomain.cer", "../test/key/ourdomain.key")
@@ -1258,15 +1258,15 @@ func TestConfigurator_VerifyServerHostname(t *testing.T) {
 	require.False(t, c.VerifyServerHostname())
 
 	c.base.VerifyServerHostname = true
-	c.autoTLS.verifyServerHostname = false
+	c.internalRPC.autoTLS.verifyServerHostname = false
 	require.True(t, c.VerifyServerHostname())
 
 	c.base.VerifyServerHostname = false
-	c.autoTLS.verifyServerHostname = true
+	c.internalRPC.autoTLS.verifyServerHostname = true
 	require.True(t, c.VerifyServerHostname())
 
 	c.base.VerifyServerHostname = true
-	c.autoTLS.verifyServerHostname = true
+	c.internalRPC.autoTLS.verifyServerHostname = true
 	require.True(t, c.VerifyServerHostname())
 }
 
@@ -1276,12 +1276,12 @@ func TestConfigurator_AutoEncryptCert(t *testing.T) {
 
 	cert, err := loadKeyPair("../test/key/something_expired.cer", "../test/key/something_expired.key")
 	require.NoError(t, err)
-	c.autoTLS.cert = cert
+	c.internalRPC.autoTLS.cert = cert
 	require.Equal(t, int64(1561561551), c.AutoEncryptCert().NotAfter.Unix())
 
 	cert, err = loadKeyPair("../test/key/ourdomain.cer", "../test/key/ourdomain.key")
 	require.NoError(t, err)
-	c.autoTLS.cert = cert
+	c.internalRPC.autoTLS.cert = cert
 	require.Equal(t, int64(4679716209), c.AutoEncryptCert().NotAfter.Unix())
 }
 

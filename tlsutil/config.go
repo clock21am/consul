@@ -171,9 +171,8 @@ type Configurator struct {
 	version uint64
 
 	// lock synchronizes access to all fields on this struct except for logger and version.
-	lock    sync.RWMutex
-	base    *Config
-	autoTLS autoTLS
+	lock sync.RWMutex
+	base *Config
 	// peerDatacenterUseTLS is a map of DC name to a bool indicating if the DC
 	// uses TLS for RPC requests.
 	peerDatacenterUseTLS map[string]bool
@@ -186,6 +185,8 @@ type Configurator struct {
 		// caPool containing only the caPems. This CertPool should be used instead of
 		// the caPool when only the Agent TLS CA is allowed.
 		manualCAPool *x509.CertPool
+
+		autoTLS autoTLS
 	}
 
 	// logger is not protected by a lock. It must never be changed after
@@ -235,7 +236,7 @@ func (c *Configurator) Update(config Config) error {
 	if err != nil {
 		return err
 	}
-	caPool, err := newX509CertPool(pems, c.autoTLS.extraCAPems, c.autoTLS.connectCAPems)
+	caPool, err := newX509CertPool(pems, c.internalRPC.autoTLS.extraCAPems, c.internalRPC.autoTLS.connectCAPems)
 	if err != nil {
 		return err
 	}
@@ -265,14 +266,14 @@ func (c *Configurator) UpdateAutoTLSCA(connectCAPems []string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	pool, err := newX509CertPool(c.internalRPC.caPems, c.autoTLS.extraCAPems, connectCAPems)
+	pool, err := newX509CertPool(c.internalRPC.caPems, c.internalRPC.autoTLS.extraCAPems, connectCAPems)
 	if err != nil {
 		return err
 	}
 	if err = validateConfig(*c.base, pool, c.internalRPC.cert); err != nil {
 		return err
 	}
-	c.autoTLS.connectCAPems = connectCAPems
+	c.internalRPC.autoTLS.connectCAPems = connectCAPems
 	c.internalRPC.caPool = pool
 	atomic.AddUint64(&c.version, 1)
 	c.log("UpdateAutoTLSCA")
@@ -289,7 +290,7 @@ func (c *Configurator) UpdateAutoTLSCert(pub, priv string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	c.autoTLS.cert = &cert
+	c.internalRPC.autoTLS.cert = &cert
 	atomic.AddUint64(&c.version, 1)
 	c.log("UpdateAutoTLSCert")
 	return nil
@@ -310,11 +311,11 @@ func (c *Configurator) UpdateAutoTLS(manualCAPems, connectCAPems []string, pub, 
 	if err != nil {
 		return err
 	}
-	c.autoTLS.extraCAPems = manualCAPems
-	c.autoTLS.connectCAPems = connectCAPems
-	c.autoTLS.cert = &cert
+	c.internalRPC.autoTLS.extraCAPems = manualCAPems
+	c.internalRPC.autoTLS.connectCAPems = connectCAPems
+	c.internalRPC.autoTLS.cert = &cert
 	c.internalRPC.caPool = pool
-	c.autoTLS.verifyServerHostname = verifyServerHostname
+	c.internalRPC.autoTLS.verifyServerHostname = verifyServerHostname
 	atomic.AddUint64(&c.version, 1)
 	c.log("UpdateAutoTLS")
 	return nil
@@ -496,7 +497,7 @@ func (c *Configurator) commonTLSConfig(verifyIncoming bool) *tls.Config {
 	// to a server requesting a certificate. Return the autoEncrypt certificate
 	// if possible, otherwise default to the manually provisioned one.
 	tlsConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-		cert := c.autoTLS.cert
+		cert := c.internalRPC.autoTLS.cert
 		if cert == nil {
 			cert = c.internalRPC.cert
 		}
@@ -532,7 +533,7 @@ func (c *Configurator) Cert() *tls.Certificate {
 	defer c.lock.RUnlock()
 	cert := c.internalRPC.cert
 	if cert == nil {
-		cert = c.autoTLS.cert
+		cert = c.internalRPC.autoTLS.cert
 	}
 	return cert
 }
@@ -564,7 +565,7 @@ func (c *Configurator) outgoingRPCTLSEnabled() bool {
 func (c *Configurator) MutualTLSCapable() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.internalRPC.caPool != nil && (c.autoTLS.cert != nil || c.internalRPC.cert != nil)
+	return c.internalRPC.caPool != nil && (c.internalRPC.autoTLS.cert != nil || c.internalRPC.cert != nil)
 }
 
 // This function acquires a read lock because it reads from the config.
@@ -613,7 +614,7 @@ func (c *Configurator) serverNameOrNodeName() string {
 func (c *Configurator) VerifyServerHostname() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.base.VerifyServerHostname || c.autoTLS.verifyServerHostname
+	return c.base.VerifyServerHostname || c.internalRPC.autoTLS.verifyServerHostname
 }
 
 // IncomingExternalGRPCConfig generates a *tls.Config for incoming
@@ -781,7 +782,7 @@ func (c *Configurator) OutgoingALPNRPCWrapper() ALPNWrapper {
 func (c *Configurator) AutoEncryptCert() *x509.Certificate {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	tlsCert := c.autoTLS.cert
+	tlsCert := c.internalRPC.autoTLS.cert
 	if tlsCert == nil || tlsCert.Certificate == nil {
 		return nil
 	}
