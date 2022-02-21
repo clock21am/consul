@@ -165,8 +165,9 @@ type listenerConfig struct {
 	cipherSuites             []uint16
 	preferServerCipherSuites bool
 
-	verifyIncoming bool
-	verifyOutgoing bool
+	verifyIncoming       bool
+	verifyOutgoing       bool
+	verifyServerHostname bool
 
 	cert   *tls.Certificate
 	caPems []string
@@ -269,6 +270,7 @@ func (c *Configurator) Update(config Config) error {
 	c.internalRPC.preferServerCipherSuites = c.base.PreferServerCipherSuites
 	c.internalRPC.verifyIncoming = c.base.VerifyIncomingRPC
 	c.internalRPC.verifyOutgoing = c.base.VerifyOutgoing
+	c.internalRPC.verifyServerHostname = c.base.VerifyServerHostname
 	c.internalRPC.cert = cert
 	c.internalRPC.caPems = pems
 	c.internalRPC.manualCAPool = manualCAPool
@@ -634,7 +636,7 @@ func (c *Configurator) serverNameOrNodeName() string {
 func (c *Configurator) VerifyServerHostname() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.base.VerifyServerHostname || c.internalRPC.autoTLS.verifyServerHostname
+	return c.internalRPC.verifyServerHostname || c.internalRPC.autoTLS.verifyServerHostname
 }
 
 // IncomingExternalGRPCConfig generates a *tls.Config for incoming

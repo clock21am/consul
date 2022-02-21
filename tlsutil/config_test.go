@@ -1255,15 +1255,15 @@ func TestConfigurator_VerifyServerHostname(t *testing.T) {
 	c := Configurator{base: &Config{}}
 	require.False(t, c.VerifyServerHostname())
 
-	c.base.VerifyServerHostname = true
+	c.internalRPC.verifyServerHostname = true
 	c.internalRPC.autoTLS.verifyServerHostname = false
 	require.True(t, c.VerifyServerHostname())
 
-	c.base.VerifyServerHostname = false
+	c.internalRPC.verifyServerHostname = false
 	c.internalRPC.autoTLS.verifyServerHostname = true
 	require.True(t, c.VerifyServerHostname())
 
-	c.base.VerifyServerHostname = true
+	c.internalRPC.verifyServerHostname = true
 	c.internalRPC.autoTLS.verifyServerHostname = true
 	require.True(t, c.VerifyServerHostname())
 }
