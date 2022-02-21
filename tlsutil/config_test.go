@@ -857,11 +857,9 @@ func TestConfigurator_UpdateAutoTLSCA_DoesNotPanic(t *testing.T) {
 }
 
 func TestConfigurator_VerifyIncomingRPC(t *testing.T) {
-	c := Configurator{base: &Config{
-		VerifyIncomingRPC: true,
-	}}
-	verify := c.VerifyIncomingRPC()
-	require.Equal(t, c.base.VerifyIncomingRPC, verify)
+	c := Configurator{base: &Config{}}
+	c.internalRPC.verifyIncoming = true
+	require.True(t, c.VerifyIncomingRPC())
 }
 
 func TestConfigurator_IncomingRPCConfig(t *testing.T) {

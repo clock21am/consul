@@ -165,6 +165,8 @@ type listenerConfig struct {
 	cipherSuites             []uint16
 	preferServerCipherSuites bool
 
+	verifyIncoming bool
+
 	cert   *tls.Certificate
 	caPems []string
 	caPool *x509.CertPool
@@ -264,6 +266,7 @@ func (c *Configurator) Update(config Config) error {
 	c.internalRPC.tlsMinVersion = c.base.TLSMinVersion
 	c.internalRPC.cipherSuites = c.base.CipherSuites
 	c.internalRPC.preferServerCipherSuites = c.base.PreferServerCipherSuites
+	c.internalRPC.verifyIncoming = c.base.VerifyIncomingRPC
 	c.internalRPC.cert = cert
 	c.internalRPC.caPems = pems
 	c.internalRPC.manualCAPool = manualCAPool
@@ -563,7 +566,7 @@ func (c *Configurator) ExternalGRPCCert() *tls.Certificate {
 func (c *Configurator) VerifyIncomingRPC() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.base.VerifyIncoming || c.base.VerifyIncomingRPC
+	return c.base.VerifyIncoming || c.internalRPC.verifyIncoming
 }
 
 // This function acquires a read lock because it reads from the config.
