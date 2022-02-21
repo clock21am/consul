@@ -711,9 +711,9 @@ func TestConfigurator_CommonTLSConfigCAs(t *testing.T) {
 	require.Nil(t, c.commonTLSConfig(false).ClientCAs)
 	require.Nil(t, c.commonTLSConfig(false).RootCAs)
 
-	c.caPool = &x509.CertPool{}
-	require.Equal(t, c.caPool, c.commonTLSConfig(false).ClientCAs)
-	require.Equal(t, c.caPool, c.commonTLSConfig(false).RootCAs)
+	c.internalRPC.caPool = &x509.CertPool{}
+	require.Equal(t, c.internalRPC.caPool, c.commonTLSConfig(false).ClientCAs)
+	require.Equal(t, c.internalRPC.caPool, c.commonTLSConfig(false).RootCAs)
 }
 
 func TestConfigurator_CommonTLSConfigTLSMinVersion(t *testing.T) {
@@ -765,7 +765,7 @@ func TestConfigurator_OutgoingRPCTLSDisabled(t *testing.T) {
 	}
 	for i, v := range variants {
 		info := fmt.Sprintf("case %d", i)
-		c.caPool = v.pool
+		c.internalRPC.caPool = v.pool
 		c.base.VerifyOutgoing = v.verify
 		c.base.AutoTLS = v.autoEncryptTLS
 		require.Equal(t, v.expected, c.outgoingRPCTLSEnabled(), info)
@@ -1181,7 +1181,7 @@ func TestConfigurator_UpdateChecks(t *testing.T) {
 func TestConfigurator_UpdateSetsStuff(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
-	require.Nil(t, c.caPool)
+	require.Nil(t, c.internalRPC.caPool)
 	require.Nil(t, c.internalRPC.cert)
 	require.Equal(t, c.base, &Config{})
 	require.Equal(t, uint64(1), c.version)
@@ -1195,8 +1195,8 @@ func TestConfigurator_UpdateSetsStuff(t *testing.T) {
 		KeyFile:  "../test/key/ourdomain.key",
 	}
 	require.NoError(t, c.Update(config))
-	require.NotNil(t, c.caPool)
-	require.Len(t, c.caPool.Subjects(), 1)
+	require.NotNil(t, c.internalRPC.caPool)
+	require.Len(t, c.internalRPC.caPool.Subjects(), 1)
 	require.NotNil(t, c.internalRPC.cert)
 	require.Equal(t, c.base, &config)
 	require.Equal(t, uint64(2), c.version)
@@ -1241,7 +1241,7 @@ func TestConfigurator_VerifyOutgoing(t *testing.T) {
 	}
 	for i, v := range variants {
 		info := fmt.Sprintf("case %d", i)
-		c.caPool = v.pool
+		c.internalRPC.caPool = v.pool
 		c.base.VerifyOutgoing = v.verify
 		c.base.AutoTLS = v.autoEncryptTLS
 		require.Equal(t, v.expected, c.verifyOutgoing(), info)

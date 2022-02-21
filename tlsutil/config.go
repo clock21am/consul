@@ -160,14 +160,6 @@ type autoTLS struct {
 	verifyServerHostname bool
 }
 
-// manual stores the TLS CA and cert received from Configurator.Update which
-// generally comes from the agent configuration.
-type manual struct {
-	// caPool containing only the caPems. This CertPool should be used instead of
-	// the Configurator.caPool when only the Agent TLS CA is allowed.
-	caPool *x509.CertPool
-}
-
 // Configurator provides tls.Config and net.Dial wrappers to enable TLS for
 // clients and servers, for both HTTPS and RPC requests.
 // Configurator receives an initial TLS configuration from agent configuration,
@@ -182,8 +174,6 @@ type Configurator struct {
 	lock    sync.RWMutex
 	base    *Config
 	autoTLS autoTLS
-	manual  manual
-	caPool  *x509.CertPool
 	// peerDatacenterUseTLS is a map of DC name to a bool indicating if the DC
 	// uses TLS for RPC requests.
 	peerDatacenterUseTLS map[string]bool
@@ -191,6 +181,11 @@ type Configurator struct {
 	internalRPC struct {
 		cert   *tls.Certificate
 		caPems []string
+		caPool *x509.CertPool
+
+		// caPool containing only the caPems. This CertPool should be used instead of
+		// the caPool when only the Agent TLS CA is allowed.
+		manualCAPool *x509.CertPool
 	}
 
 	// logger is not protected by a lock. It must never be changed after
@@ -255,8 +250,8 @@ func (c *Configurator) Update(config Config) error {
 	c.base = &config
 	c.internalRPC.cert = cert
 	c.internalRPC.caPems = pems
-	c.manual.caPool = manualCAPool
-	c.caPool = caPool
+	c.internalRPC.manualCAPool = manualCAPool
+	c.internalRPC.caPool = caPool
 	atomic.AddUint64(&c.version, 1)
 	c.log("Update")
 	return nil
@@ -278,7 +273,7 @@ func (c *Configurator) UpdateAutoTLSCA(connectCAPems []string) error {
 		return err
 	}
 	c.autoTLS.connectCAPems = connectCAPems
-	c.caPool = pool
+	c.internalRPC.caPool = pool
 	atomic.AddUint64(&c.version, 1)
 	c.log("UpdateAutoTLSCA")
 	return nil
@@ -318,7 +313,7 @@ func (c *Configurator) UpdateAutoTLS(manualCAPems, connectCAPems []string, pub, 
 	c.autoTLS.extraCAPems = manualCAPems
 	c.autoTLS.connectCAPems = connectCAPems
 	c.autoTLS.cert = &cert
-	c.caPool = pool
+	c.internalRPC.caPool = pool
 	c.autoTLS.verifyServerHostname = verifyServerHostname
 	atomic.AddUint64(&c.version, 1)
 	c.log("UpdateAutoTLS")
@@ -515,8 +510,8 @@ func (c *Configurator) commonTLSConfig(verifyIncoming bool) *tls.Config {
 		return cert, nil
 	}
 
-	tlsConfig.ClientCAs = c.caPool
-	tlsConfig.RootCAs = c.caPool
+	tlsConfig.ClientCAs = c.internalRPC.caPool
+	tlsConfig.RootCAs = c.internalRPC.caPool
 
 	// This is possible because tlsLookup also contains "" with golang's
 	// default (tls10). And because the initial check makes sure the
@@ -569,7 +564,7 @@ func (c *Configurator) outgoingRPCTLSEnabled() bool {
 func (c *Configurator) MutualTLSCapable() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.caPool != nil && (c.autoTLS.cert != nil || c.internalRPC.cert != nil)
+	return c.internalRPC.caPool != nil && (c.autoTLS.cert != nil || c.internalRPC.cert != nil)
 }
 
 // This function acquires a read lock because it reads from the config.
@@ -579,7 +574,7 @@ func (c *Configurator) verifyOutgoing() bool {
 
 	// If AutoEncryptTLS is enabled and there is a CA, then verify
 	// outgoing.
-	if c.base.AutoTLS && c.caPool != nil {
+	if c.base.AutoTLS && c.internalRPC.caPool != nil {
 		return true
 	}
 
@@ -921,7 +916,7 @@ func (c *Configurator) AuthorizeServerConn(dc string, conn TLSConn) error {
 	}
 
 	c.lock.RLock()
-	caPool := c.manual.caPool
+	caPool := c.internalRPC.manualCAPool
 	c.lock.RUnlock()
 
 	expected := c.ServerSNI(dc, "")
