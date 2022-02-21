@@ -164,7 +164,6 @@ type autoTLS struct {
 // generally comes from the agent configuration.
 type manual struct {
 	caPems []string
-	cert   *tls.Certificate
 	// caPool containing only the caPems. This CertPool should be used instead of
 	// the Configurator.caPool when only the Agent TLS CA is allowed.
 	caPool *x509.CertPool
@@ -189,6 +188,10 @@ type Configurator struct {
 	// peerDatacenterUseTLS is a map of DC name to a bool indicating if the DC
 	// uses TLS for RPC requests.
 	peerDatacenterUseTLS map[string]bool
+
+	internalRPC struct {
+		cert *tls.Certificate
+	}
 
 	// logger is not protected by a lock. It must never be changed after
 	// Configurator is created.
@@ -250,7 +253,7 @@ func (c *Configurator) Update(config Config) error {
 	}
 
 	c.base = &config
-	c.manual.cert = cert
+	c.internalRPC.cert = cert
 	c.manual.caPems = pems
 	c.manual.caPool = manualCAPool
 	c.caPool = caPool
@@ -271,7 +274,7 @@ func (c *Configurator) UpdateAutoTLSCA(connectCAPems []string) error {
 	if err != nil {
 		return err
 	}
-	if err = validateConfig(*c.base, pool, c.manual.cert); err != nil {
+	if err = validateConfig(*c.base, pool, c.internalRPC.cert); err != nil {
 		return err
 	}
 	c.autoTLS.connectCAPems = connectCAPems
@@ -500,7 +503,7 @@ func (c *Configurator) commonTLSConfig(verifyIncoming bool) *tls.Config {
 	tlsConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
 		cert := c.autoTLS.cert
 		if cert == nil {
-			cert = c.manual.cert
+			cert = c.internalRPC.cert
 		}
 
 		if cert == nil {
@@ -532,7 +535,7 @@ func (c *Configurator) commonTLSConfig(verifyIncoming bool) *tls.Config {
 func (c *Configurator) Cert() *tls.Certificate {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	cert := c.manual.cert
+	cert := c.internalRPC.cert
 	if cert == nil {
 		cert = c.autoTLS.cert
 	}
@@ -566,7 +569,7 @@ func (c *Configurator) outgoingRPCTLSEnabled() bool {
 func (c *Configurator) MutualTLSCapable() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.caPool != nil && (c.autoTLS.cert != nil || c.manual.cert != nil)
+	return c.caPool != nil && (c.autoTLS.cert != nil || c.internalRPC.cert != nil)
 }
 
 // This function acquires a read lock because it reads from the config.

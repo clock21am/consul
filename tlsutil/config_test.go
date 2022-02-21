@@ -667,10 +667,10 @@ func TestConfigurator_CommonTLSConfigGetClientCertificate(t *testing.T) {
 
 	c1, err := loadKeyPair("../test/key/something_expired.cer", "../test/key/something_expired.key")
 	require.NoError(t, err)
-	c.manual.cert = c1
+	c.internalRPC.cert = c1
 	cert, err = c.commonTLSConfig(false).GetClientCertificate(nil)
 	require.NoError(t, err)
-	require.Equal(t, c.manual.cert, cert)
+	require.Equal(t, c.internalRPC.cert, cert)
 
 	c2, err := loadKeyPair("../test/key/ourdomain.cer", "../test/key/ourdomain.key")
 	require.NoError(t, err)
@@ -699,10 +699,10 @@ func TestConfigurator_CommonTLSConfigGetCertificate(t *testing.T) {
 	// Setting a different certificate as a manual cert will override the auto-encrypt cert and instead return the manual cert
 	c2, err := loadKeyPair("../test/key/ourdomain.cer", "../test/key/ourdomain.key")
 	require.NoError(t, err)
-	c.manual.cert = c2
+	c.internalRPC.cert = c2
 	cert, err = c.commonTLSConfig(false).GetCertificate(nil)
 	require.NoError(t, err)
-	require.Equal(t, c.manual.cert, cert)
+	require.Equal(t, c.internalRPC.cert, cert)
 }
 
 func TestConfigurator_CommonTLSConfigCAs(t *testing.T) {
@@ -1182,7 +1182,7 @@ func TestConfigurator_UpdateSetsStuff(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
 	require.Nil(t, c.caPool)
-	require.Nil(t, c.manual.cert)
+	require.Nil(t, c.internalRPC.cert)
 	require.Equal(t, c.base, &Config{})
 	require.Equal(t, uint64(1), c.version)
 
@@ -1197,7 +1197,7 @@ func TestConfigurator_UpdateSetsStuff(t *testing.T) {
 	require.NoError(t, c.Update(config))
 	require.NotNil(t, c.caPool)
 	require.Len(t, c.caPool.Subjects(), 1)
-	require.NotNil(t, c.manual.cert)
+	require.NotNil(t, c.internalRPC.cert)
 	require.Equal(t, c.base, &config)
 	require.Equal(t, uint64(2), c.version)
 }
