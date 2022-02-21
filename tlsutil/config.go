@@ -161,7 +161,8 @@ type autoTLS struct {
 }
 
 type listenerConfig struct {
-	cipherSuites []uint16
+	cipherSuites  []uint16
+	tlsMinVersion string
 
 	cert   *tls.Certificate
 	caPems []string
@@ -258,6 +259,7 @@ func (c *Configurator) Update(config Config) error {
 
 	c.base = &config
 	c.internalRPC.cipherSuites = c.base.CipherSuites
+	c.internalRPC.tlsMinVersion = c.base.TLSMinVersion
 	c.internalRPC.cert = cert
 	c.internalRPC.caPems = pems
 	c.internalRPC.manualCAPool = manualCAPool
@@ -526,7 +528,7 @@ func (c *Configurator) commonTLSConfig(verifyIncoming bool) *tls.Config {
 	// This is possible because tlsLookup also contains "" with golang's
 	// default (tls10). And because the initial check makes sure the
 	// version correctly matches.
-	tlsConfig.MinVersion = tlsLookup[c.base.TLSMinVersion]
+	tlsConfig.MinVersion = tlsLookup[c.internalRPC.tlsMinVersion]
 
 	// Set ClientAuth if necessary
 	if verifyIncoming {
