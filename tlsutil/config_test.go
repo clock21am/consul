@@ -766,7 +766,7 @@ func TestConfigurator_OutgoingRPCTLSDisabled(t *testing.T) {
 	for i, v := range variants {
 		info := fmt.Sprintf("case %d", i)
 		c.internalRPC.caPool = v.pool
-		c.base.VerifyOutgoing = v.verify
+		c.internalRPC.verifyOutgoing = v.verify
 		c.base.AutoTLS = v.autoEncryptTLS
 		require.Equal(t, v.expected, c.outgoingRPCTLSEnabled(), info)
 	}
@@ -1240,7 +1240,7 @@ func TestConfigurator_VerifyOutgoing(t *testing.T) {
 	for i, v := range variants {
 		info := fmt.Sprintf("case %d", i)
 		c.internalRPC.caPool = v.pool
-		c.base.VerifyOutgoing = v.verify
+		c.internalRPC.verifyOutgoing = v.verify
 		c.base.AutoTLS = v.autoEncryptTLS
 		require.Equal(t, v.expected, c.verifyOutgoing(), info)
 	}

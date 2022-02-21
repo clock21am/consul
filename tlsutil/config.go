@@ -166,6 +166,7 @@ type listenerConfig struct {
 	preferServerCipherSuites bool
 
 	verifyIncoming bool
+	verifyOutgoing bool
 
 	cert   *tls.Certificate
 	caPems []string
@@ -267,6 +268,7 @@ func (c *Configurator) Update(config Config) error {
 	c.internalRPC.cipherSuites = c.base.CipherSuites
 	c.internalRPC.preferServerCipherSuites = c.base.PreferServerCipherSuites
 	c.internalRPC.verifyIncoming = c.base.VerifyIncomingRPC
+	c.internalRPC.verifyOutgoing = c.base.VerifyOutgoing
 	c.internalRPC.cert = cert
 	c.internalRPC.caPems = pems
 	c.internalRPC.manualCAPool = manualCAPool
@@ -575,7 +577,7 @@ func (c *Configurator) outgoingRPCTLSEnabled() bool {
 	defer c.lock.RUnlock()
 
 	// use TLS if AutoEncrypt or VerifyOutgoing are enabled.
-	return c.base.AutoTLS || c.base.VerifyOutgoing
+	return c.base.AutoTLS || c.internalRPC.verifyOutgoing
 }
 
 // MutualTLSCapable returns true if Configurator has a CA and a local TLS
@@ -597,7 +599,7 @@ func (c *Configurator) verifyOutgoing() bool {
 		return true
 	}
 
-	return c.base.VerifyOutgoing
+	return c.internalRPC.verifyOutgoing
 }
 
 func (c *Configurator) ServerSNI(dc, nodeName string) string {
