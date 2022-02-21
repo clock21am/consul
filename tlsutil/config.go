@@ -161,8 +161,9 @@ type autoTLS struct {
 }
 
 type listenerConfig struct {
-	cipherSuites  []uint16
-	tlsMinVersion string
+	tlsMinVersion            string
+	cipherSuites             []uint16
+	preferServerCipherSuites bool
 
 	cert   *tls.Certificate
 	caPems []string
@@ -193,6 +194,8 @@ type Configurator struct {
 		// the caPool when only the Agent TLS CA is allowed.
 		//
 		// TODO: expand on this comment.
+		// TODO: Actually, maybe we should layer the auto-config stuff on top rather
+		// than destructively merging it in?
 		manualCAPool *x509.CertPool
 
 		autoTLS autoTLS
@@ -258,8 +261,9 @@ func (c *Configurator) Update(config Config) error {
 	}
 
 	c.base = &config
-	c.internalRPC.cipherSuites = c.base.CipherSuites
 	c.internalRPC.tlsMinVersion = c.base.TLSMinVersion
+	c.internalRPC.cipherSuites = c.base.CipherSuites
+	c.internalRPC.preferServerCipherSuites = c.base.PreferServerCipherSuites
 	c.internalRPC.cert = cert
 	c.internalRPC.caPems = pems
 	c.internalRPC.manualCAPool = manualCAPool
@@ -494,7 +498,7 @@ func (c *Configurator) commonTLSConfig(verifyIncoming bool) *tls.Config {
 		tlsConfig.CipherSuites = c.internalRPC.cipherSuites
 	}
 
-	tlsConfig.PreferServerCipherSuites = c.base.PreferServerCipherSuites
+	tlsConfig.PreferServerCipherSuites = c.internalRPC.preferServerCipherSuites
 
 	// GetCertificate is used when acting as a server and responding to
 	// client requests. Default to the manually configured cert, but allow
