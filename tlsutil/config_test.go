@@ -569,7 +569,7 @@ func TestConfigurator_CommonTLSConfigServerNameNodeName(t *testing.T) {
 	for _, v := range variants {
 		c, err := NewConfigurator(v.config, nil)
 		require.NoError(t, err)
-		tlsConf := c.commonTLSConfig(c.internalRPC.tlsParams, false)
+		tlsConf := c.commonTLSConfig(c.internalRPC, false)
 		require.Empty(t, tlsConf.ServerName)
 	}
 }
@@ -616,43 +616,43 @@ func TestConfigurator_LoadCAs(t *testing.T) {
 func TestConfigurator_CommonTLSConfigInsecureSkipVerify(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
-	tlsConf := c.commonTLSConfig(c.internalRPC.tlsParams, false)
+	tlsConf := c.commonTLSConfig(c.internalRPC, false)
 	require.True(t, tlsConf.InsecureSkipVerify)
 
 	require.NoError(t, c.Update(Config{VerifyServerHostname: false}))
-	tlsConf = c.commonTLSConfig(c.internalRPC.tlsParams, false)
+	tlsConf = c.commonTLSConfig(c.internalRPC, false)
 	require.True(t, tlsConf.InsecureSkipVerify)
 
 	require.NoError(t, c.Update(Config{VerifyServerHostname: true}))
-	tlsConf = c.commonTLSConfig(c.internalRPC.tlsParams, false)
+	tlsConf = c.commonTLSConfig(c.internalRPC, false)
 	require.False(t, tlsConf.InsecureSkipVerify)
 }
 
 func TestConfigurator_CommonTLSConfigPreferServerCipherSuites(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
-	tlsConf := c.commonTLSConfig(c.internalRPC.tlsParams, false)
+	tlsConf := c.commonTLSConfig(c.internalRPC, false)
 	require.False(t, tlsConf.PreferServerCipherSuites)
 
 	require.NoError(t, c.Update(Config{PreferServerCipherSuites: false}))
-	tlsConf = c.commonTLSConfig(c.internalRPC.tlsParams, false)
+	tlsConf = c.commonTLSConfig(c.internalRPC, false)
 	require.False(t, tlsConf.PreferServerCipherSuites)
 
 	require.NoError(t, c.Update(Config{PreferServerCipherSuites: true}))
-	tlsConf = c.commonTLSConfig(c.internalRPC.tlsParams, false)
+	tlsConf = c.commonTLSConfig(c.internalRPC, false)
 	require.True(t, tlsConf.PreferServerCipherSuites)
 }
 
 func TestConfigurator_CommonTLSConfigCipherSuites(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
-	tlsConf := c.commonTLSConfig(c.internalRPC.tlsParams, false)
+	tlsConf := c.commonTLSConfig(c.internalRPC, false)
 	require.Empty(t, tlsConf.CipherSuites)
 
 	conf := Config{CipherSuites: []uint16{
 		tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305}}
 	require.NoError(t, c.Update(conf))
-	tlsConf = c.commonTLSConfig(c.internalRPC.tlsParams, false)
+	tlsConf = c.commonTLSConfig(c.internalRPC, false)
 	require.Equal(t, conf.CipherSuites, tlsConf.CipherSuites)
 }
 
@@ -660,7 +660,7 @@ func TestConfigurator_CommonTLSConfigGetClientCertificate(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
 
-	cert, err := c.commonTLSConfig(c.internalRPC.tlsParams, false).GetClientCertificate(nil)
+	cert, err := c.commonTLSConfig(c.internalRPC, false).GetClientCertificate(nil)
 	require.NoError(t, err)
 	require.NotNil(t, cert)
 	require.Empty(t, cert.Certificate)
@@ -668,14 +668,14 @@ func TestConfigurator_CommonTLSConfigGetClientCertificate(t *testing.T) {
 	c1, err := loadKeyPair("../test/key/something_expired.cer", "../test/key/something_expired.key")
 	require.NoError(t, err)
 	c.internalRPC.cert = c1
-	cert, err = c.commonTLSConfig(c.internalRPC.tlsParams, false).GetClientCertificate(nil)
+	cert, err = c.commonTLSConfig(c.internalRPC, false).GetClientCertificate(nil)
 	require.NoError(t, err)
 	require.Equal(t, c.internalRPC.cert, cert)
 
 	c2, err := loadKeyPair("../test/key/ourdomain.cer", "../test/key/ourdomain.key")
 	require.NoError(t, err)
 	c.internalRPC.autoTLS.cert = c2
-	cert, err = c.commonTLSConfig(c.internalRPC.tlsParams, false).GetClientCertificate(nil)
+	cert, err = c.commonTLSConfig(c.internalRPC, false).GetClientCertificate(nil)
 	require.NoError(t, err)
 	require.Equal(t, c.internalRPC.autoTLS.cert, cert)
 }
@@ -684,7 +684,7 @@ func TestConfigurator_CommonTLSConfigGetCertificate(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
 
-	cert, err := c.commonTLSConfig(c.internalRPC.tlsParams, false).GetCertificate(nil)
+	cert, err := c.commonTLSConfig(c.internalRPC, false).GetCertificate(nil)
 	require.NoError(t, err)
 	require.Nil(t, cert)
 
@@ -692,7 +692,7 @@ func TestConfigurator_CommonTLSConfigGetCertificate(t *testing.T) {
 	c1, err := loadKeyPair("../test/key/something_expired.cer", "../test/key/something_expired.key")
 	require.NoError(t, err)
 	c.internalRPC.autoTLS.cert = c1
-	cert, err = c.commonTLSConfig(c.internalRPC.tlsParams, false).GetCertificate(nil)
+	cert, err = c.commonTLSConfig(c.internalRPC, false).GetCertificate(nil)
 	require.NoError(t, err)
 	require.Equal(t, c.internalRPC.autoTLS.cert, cert)
 
@@ -700,7 +700,7 @@ func TestConfigurator_CommonTLSConfigGetCertificate(t *testing.T) {
 	c2, err := loadKeyPair("../test/key/ourdomain.cer", "../test/key/ourdomain.key")
 	require.NoError(t, err)
 	c.internalRPC.cert = c2
-	cert, err = c.commonTLSConfig(c.internalRPC.tlsParams, false).GetCertificate(nil)
+	cert, err = c.commonTLSConfig(c.internalRPC, false).GetCertificate(nil)
 	require.NoError(t, err)
 	require.Equal(t, c.internalRPC.cert, cert)
 }
@@ -708,22 +708,22 @@ func TestConfigurator_CommonTLSConfigGetCertificate(t *testing.T) {
 func TestConfigurator_CommonTLSConfigCAs(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
-	require.Nil(t, c.commonTLSConfig(c.internalRPC.tlsParams, false).ClientCAs)
-	require.Nil(t, c.commonTLSConfig(c.internalRPC.tlsParams, false).RootCAs)
+	require.Nil(t, c.commonTLSConfig(c.internalRPC, false).ClientCAs)
+	require.Nil(t, c.commonTLSConfig(c.internalRPC, false).RootCAs)
 
 	c.internalRPC.caPool = &x509.CertPool{}
-	require.Equal(t, c.internalRPC.caPool, c.commonTLSConfig(c.internalRPC.tlsParams, false).ClientCAs)
-	require.Equal(t, c.internalRPC.caPool, c.commonTLSConfig(c.internalRPC.tlsParams, false).RootCAs)
+	require.Equal(t, c.internalRPC.caPool, c.commonTLSConfig(c.internalRPC, false).ClientCAs)
+	require.Equal(t, c.internalRPC.caPool, c.commonTLSConfig(c.internalRPC, false).RootCAs)
 }
 
 func TestConfigurator_CommonTLSConfigTLSMinVersion(t *testing.T) {
 	c, err := NewConfigurator(Config{TLSMinVersion: ""}, nil)
 	require.NoError(t, err)
-	require.Equal(t, c.commonTLSConfig(c.internalRPC.tlsParams, false).MinVersion, tlsLookup["tls10"])
+	require.Equal(t, c.commonTLSConfig(c.internalRPC, false).MinVersion, tlsLookup["tls10"])
 
 	for _, version := range tlsVersions() {
 		require.NoError(t, c.Update(Config{TLSMinVersion: version}))
-		require.Equal(t, c.commonTLSConfig(c.internalRPC.tlsParams, false).MinVersion,
+		require.Equal(t, c.commonTLSConfig(c.internalRPC, false).MinVersion,
 			tlsLookup[version])
 	}
 
@@ -741,7 +741,7 @@ func TestConfigurator_CommonTLSConfigVerifyIncoming(t *testing.T) {
 		{false, tls.NoClientCert},
 	}
 	for _, v := range variants {
-		require.Equal(t, v.expected, c.commonTLSConfig(c.internalRPC.tlsParams, v.verify).ClientAuth)
+		require.Equal(t, v.expected, c.commonTLSConfig(c.internalRPC, v.verify).ClientAuth)
 	}
 }
 
@@ -932,7 +932,8 @@ func TestConfigurator_IncomingHTTPSConfig(t *testing.T) {
 	})
 
 	t.Run("verify incoming", func(t *testing.T) {
-		c := Configurator{base: &Config{VerifyIncoming: true}}
+		c := Configurator{base: &Config{}}
+		c.https.verifyIncoming = true
 
 		cfg := c.IncomingHTTPSConfig()
 
