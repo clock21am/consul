@@ -160,6 +160,14 @@ type autoTLS struct {
 	verifyServerHostname bool
 }
 
+type listenerConfig struct {
+	cipherSuites []uint16
+
+	cert   *tls.Certificate
+	caPems []string
+	caPool *x509.CertPool
+}
+
 // Configurator provides tls.Config and net.Dial wrappers to enable TLS for
 // clients and servers, for both HTTPS and RPC requests.
 // Configurator receives an initial TLS configuration from agent configuration,
@@ -178,12 +186,12 @@ type Configurator struct {
 	peerDatacenterUseTLS map[string]bool
 
 	internalRPC struct {
-		cert   *tls.Certificate
-		caPems []string
-		caPool *x509.CertPool
+		listenerConfig
 
 		// caPool containing only the caPems. This CertPool should be used instead of
 		// the caPool when only the Agent TLS CA is allowed.
+		//
+		// TODO: expand on this comment.
 		manualCAPool *x509.CertPool
 
 		autoTLS autoTLS
@@ -249,6 +257,7 @@ func (c *Configurator) Update(config Config) error {
 	}
 
 	c.base = &config
+	c.internalRPC.cipherSuites = c.base.CipherSuites
 	c.internalRPC.cert = cert
 	c.internalRPC.caPems = pems
 	c.internalRPC.manualCAPool = manualCAPool
@@ -479,8 +488,8 @@ func (c *Configurator) commonTLSConfig(verifyIncoming bool) *tls.Config {
 	}
 
 	// Set the cipher suites
-	if len(c.base.CipherSuites) != 0 {
-		tlsConfig.CipherSuites = c.base.CipherSuites
+	if len(c.internalRPC.cipherSuites) != 0 {
+		tlsConfig.CipherSuites = c.internalRPC.cipherSuites
 	}
 
 	tlsConfig.PreferServerCipherSuites = c.base.PreferServerCipherSuites
