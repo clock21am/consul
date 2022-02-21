@@ -236,8 +236,8 @@ func NewGRPCServer(s *Server, tlsConfigurator *tlsutil.Configurator) *grpc.Serve
 		),
 	}
 	if tlsConfigurator != nil {
-		if tlsConfigurator.Cert() != nil {
-			creds := credentials.NewTLS(tlsConfigurator.IncomingGRPCConfig())
+		if tlsConfigurator.ExternalGRPCCert() != nil {
+			creds := credentials.NewTLS(tlsConfigurator.IncomingExternalGRPCConfig())
 			opts = append(opts, grpc.Creds(creds))
 		}
 	}

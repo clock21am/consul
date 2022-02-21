@@ -539,6 +539,11 @@ func (c *Configurator) Cert() *tls.Certificate {
 	return cert
 }
 
+// This function acquires a read lock because it reads from the config.
+func (c *Configurator) ExternalGRPCCert() *tls.Certificate {
+	return c.Cert()
+}
+
 // VerifyIncomingRPC returns true if the configuration has enabled either
 // VerifyIncoming, or VerifyIncomingRPC
 func (c *Configurator) VerifyIncomingRPC() bool {
@@ -613,9 +618,10 @@ func (c *Configurator) VerifyServerHostname() bool {
 	return c.base.VerifyServerHostname || c.autoTLS.verifyServerHostname
 }
 
-// IncomingGRPCConfig generates a *tls.Config for incoming GRPC connections.
-func (c *Configurator) IncomingGRPCConfig() *tls.Config {
-	c.log("IncomingGRPCConfig")
+// IncomingExternalGRPCConfig generates a *tls.Config for incoming
+// external (e.g. xDS) GRPC connections.
+func (c *Configurator) IncomingExternalGRPCConfig() *tls.Config {
+	c.log("IncomingExternalGRPCConfig")
 
 	// false has the effect that this config doesn't require a client cert
 	// verification. This is because there is no verify_incoming_grpc
@@ -624,7 +630,7 @@ func (c *Configurator) IncomingGRPCConfig() *tls.Config {
 	// effect on the grpc server.
 	config := c.commonTLSConfig(false)
 	config.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
-		return c.IncomingGRPCConfig(), nil
+		return c.IncomingExternalGRPCConfig(), nil
 	}
 	return config
 }
