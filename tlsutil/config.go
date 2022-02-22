@@ -829,11 +829,11 @@ func (c *Configurator) OutgoingTLSConfigForCheck(skipVerify bool, serverName str
 	return config
 }
 
-// OutgoingRPCConfig generates a *tls.Config for outgoing RPC connections. If
+// OutgoingInternalRPCConfig generates a *tls.Config for outgoing RPC connections. If
 // there is a CA or VerifyOutgoing is set, a *tls.Config will be provided,
 // otherwise we assume that no TLS should be used.
-func (c *Configurator) OutgoingRPCConfig() *tls.Config {
-	c.log("OutgoingRPCConfig")
+func (c *Configurator) OutgoingInternalRPCConfig() *tls.Config {
+	c.log("OutgoingInternalRPCConfig")
 	if !c.outgoingRPCTLSEnabled() {
 		return nil
 	}
@@ -923,7 +923,7 @@ func (c *Configurator) log(name string) {
 // no longer supports this mode of operation, we have to do it
 // manually.
 func (c *Configurator) wrapTLSClient(dc string, conn net.Conn) (net.Conn, error) {
-	config := c.OutgoingRPCConfig()
+	config := c.OutgoingInternalRPCConfig()
 	verifyServerHostname := c.VerifyServerHostname()
 	verifyOutgoing := c.verifyOutgoing()
 	domain := c.domain()

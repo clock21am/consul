@@ -1355,7 +1355,7 @@ func assertDeepEqual(t *testing.T, x, y interface{}, opts ...cmp.Option) {
 
 func TestConfigurator_OutgoingRPCConfig(t *testing.T) {
 	c := &Configurator{base: &Config{}}
-	require.Nil(t, c.OutgoingRPCConfig())
+	require.Nil(t, c.OutgoingInternalRPCConfig())
 
 	c, err := NewConfigurator(Config{
 		InternalRPC: InternalRPCListenerConfig{
@@ -1367,7 +1367,7 @@ func TestConfigurator_OutgoingRPCConfig(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	tlsConf := c.OutgoingRPCConfig()
+	tlsConf := c.OutgoingInternalRPCConfig()
 	require.NotNil(t, tlsConf)
 	require.Equal(t, tls.NoClientCert, tlsConf.ClientAuth)
 	require.True(t, tlsConf.InsecureSkipVerify)

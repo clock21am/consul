@@ -3930,7 +3930,7 @@ func TestAgent_ReloadConfigOutgoingRPCConfig(t *testing.T) {
 	`
 	a := NewTestAgent(t, hcl)
 	defer a.Shutdown()
-	tlsConf := a.tlsConfigurator.OutgoingRPCConfig()
+	tlsConf := a.tlsConfigurator.OutgoingInternalRPCConfig()
 	require.True(t, tlsConf.InsecureSkipVerify)
 	require.Len(t, tlsConf.ClientCAs.Subjects(), 1)
 	require.Len(t, tlsConf.RootCAs.Subjects(), 1)
@@ -3945,7 +3945,7 @@ func TestAgent_ReloadConfigOutgoingRPCConfig(t *testing.T) {
 	`
 	c := TestConfig(testutil.Logger(t), config.FileSource{Name: t.Name(), Format: "hcl", Data: hcl})
 	require.NoError(t, a.reloadConfigInternal(c))
-	tlsConf = a.tlsConfigurator.OutgoingRPCConfig()
+	tlsConf = a.tlsConfigurator.OutgoingInternalRPCConfig()
 	require.False(t, tlsConf.InsecureSkipVerify)
 	require.Len(t, tlsConf.RootCAs.Subjects(), 2)
 	require.Len(t, tlsConf.ClientCAs.Subjects(), 2)
