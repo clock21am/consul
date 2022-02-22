@@ -1736,7 +1736,7 @@ func (c *RuntimeConfig) ToTLSUtilConfig() tlsutil.Config {
 			PreferServerCipherSuites: c.TLSPreferServerCipherSuites,
 		},
 		GRPC: tlsutil.ListenerConfig{
-			VerifyIncoming:           c.VerifyIncoming, // TODO: Check whether this previously honored VerifyIncomingRPC.
+			VerifyIncoming:           false,
 			CAFile:                   c.CAFile,
 			CAPath:                   c.CAPath,
 			CertFile:                 c.CertFile,
