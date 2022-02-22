@@ -974,7 +974,7 @@ func TestConfigurator_OutgoingRPCTLSDisabled(t *testing.T) {
 	for i, v := range variants {
 		info := fmt.Sprintf("case %d", i)
 		c.internalRPC.caPool = v.pool
-		c.internalRPC.base.VerifyOutgoing = v.verify
+		c.internalRPC.cfg.VerifyOutgoing = v.verify
 		c.base.AutoTLS = v.autoEncryptTLS
 		require.Equal(t, v.expected, c.outgoingRPCTLSEnabled(), info)
 	}
@@ -1074,7 +1074,7 @@ func TestConfigurator_UpdateAutoTLSCA_DoesNotPanic(t *testing.T) {
 
 func TestConfigurator_VerifyIncomingRPC(t *testing.T) {
 	c := Configurator{base: &Config{}}
-	c.internalRPC.base.VerifyIncoming = true
+	c.internalRPC.cfg.VerifyIncoming = true
 	require.True(t, c.VerifyIncomingInternalRPC())
 }
 
@@ -1156,7 +1156,7 @@ func TestConfigurator_IncomingHTTPSConfig(t *testing.T) {
 
 	t.Run("verify incoming", func(t *testing.T) {
 		c := Configurator{base: &Config{}}
-		c.https.base.VerifyIncoming = true
+		c.https.cfg.VerifyIncoming = true
 
 		cfg := c.IncomingHTTPSConfig()
 
@@ -1531,7 +1531,7 @@ func TestConfigurator_VerifyOutgoing(t *testing.T) {
 	for i, v := range variants {
 		info := fmt.Sprintf("case %d", i)
 		c.internalRPC.caPool = v.pool
-		c.internalRPC.base.VerifyOutgoing = v.verify
+		c.internalRPC.cfg.VerifyOutgoing = v.verify
 		c.base.AutoTLS = v.autoEncryptTLS
 		require.Equal(t, v.expected, c.verifyOutgoing(), info)
 	}
@@ -1546,15 +1546,15 @@ func TestConfigurator_VerifyServerHostname(t *testing.T) {
 	c := Configurator{base: &Config{}}
 	require.False(t, c.VerifyServerHostname())
 
-	c.internalRPC.base.VerifyServerHostname = true
+	c.internalRPC.cfg.VerifyServerHostname = true
 	c.internalRPC.autoTLS.verifyServerHostname = false
 	require.True(t, c.VerifyServerHostname())
 
-	c.internalRPC.base.VerifyServerHostname = false
+	c.internalRPC.cfg.VerifyServerHostname = false
 	c.internalRPC.autoTLS.verifyServerHostname = true
 	require.True(t, c.VerifyServerHostname())
 
-	c.internalRPC.base.VerifyServerHostname = true
+	c.internalRPC.cfg.VerifyServerHostname = true
 	c.internalRPC.autoTLS.verifyServerHostname = true
 	require.True(t, c.VerifyServerHostname())
 }
