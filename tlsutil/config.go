@@ -283,17 +283,17 @@ func (c *Configurator) Update(config Config) error {
 	// that this method is atomic.
 	//
 	// TODO: test cases for everything.
-	grpc, err := validateAndLoadListenerConfig(config.GRPC)
+	grpc, err := validateAndLoadListenerConfig(config.GRPC, false)
 	if err != nil {
 		return err
 	}
 
-	https, err := validateAndLoadListenerConfig(config.HTTPS)
+	https, err := validateAndLoadListenerConfig(config.HTTPS, false)
 	if err != nil {
 		return err
 	}
 
-	internalCommon, err := validateAndLoadListenerConfig(config.InternalRPC.ListenerConfig)
+	internalCommon, err := validateAndLoadListenerConfig(config.InternalRPC.ListenerConfig, true)
 	if err != nil {
 		return err
 	}
@@ -323,7 +323,8 @@ func (c *Configurator) Update(config Config) error {
 	return nil
 }
 
-func validateAndLoadListenerConfig(lc ListenerConfig) (*listenerConfig, error) {
+// TODO: rename this parameter/refactor this whole thing.
+func validateAndLoadListenerConfig(lc ListenerConfig, allowIncomingWithoutCert bool) (*listenerConfig, error) {
 	if lc.TLSMinVersion != "" {
 		if _, ok := tlsLookup[lc.TLSMinVersion]; !ok {
 			versions := strings.Join(tlsVersions(), ", ")
@@ -339,19 +340,24 @@ func validateAndLoadListenerConfig(lc ListenerConfig) (*listenerConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	if lc.VerifyIncoming && pool == nil {
-		// both auto-config and auto-encrypt require verifying the connection from the client to the server for secure
-		// operation. In order to be able to verify the servers certificate we must have some CA certs already provided.
-		// Therefore, even though both of those features can push down extra CA certificates which could be used to
-		// verify incoming connections, we still must consider it an error if none are provided in the initial configuration
-		// as those features cannot be successfully enabled without providing CA certificates to use those features.
-		return nil, fmt.Errorf("VerifyIncoming set but no CA certificates were provided")
-	}
-
 	cert, err := loadKeyPair(lc.CertFile, lc.KeyFile)
 	if err != nil {
 		return nil, err
+	}
+
+	if lc.VerifyIncoming {
+		if pool == nil {
+			// both auto-config and auto-encrypt require verifying the connection from the client to the server for secure
+			// operation. In order to be able to verify the servers certificate we must have some CA certs already provided.
+			// Therefore, even though both of those features can push down extra CA certificates which could be used to
+			// verify incoming connections, we still must consider it an error if none are provided in the initial configuration
+			// as those features cannot be successfully enabled without providing CA certificates to use those features.
+			return nil, fmt.Errorf("VerifyIncoming set but no CA certificates were provided")
+		}
+
+		if cert == nil && !allowIncomingWithoutCert {
+			return nil, fmt.Errorf("VerifyIncoming requires a Cert and Key pair in the configuration file")
+		}
 	}
 
 	return &listenerConfig{
@@ -364,11 +370,14 @@ func validateAndLoadListenerConfig(lc ListenerConfig) (*listenerConfig, error) {
 
 func validateInternalRPCListenerConfig(cfg Config, cert *tls.Certificate, caPool *x509.CertPool) error {
 	if cfg.InternalRPC.VerifyOutgoing && caPool == nil {
+		// TODO: Check up on this error message.
 		return fmt.Errorf("VerifyIncoming set but no CA certificates were provided")
 	}
 
 	// We will use the auto_encrypt/auto_config cert for TLS in the incoming APIs when available. Therefore the check
 	// here will ensure that either we enabled one of those two features or a certificate and key were provided manually
+	//
+	// TODO: I'm pretty sure this is just wrong?
 	if cfg.InternalRPC.VerifyIncoming && (cert == nil && !cfg.AutoTLS) {
 		return fmt.Errorf("VerifyIncoming requires either a Cert and Key pair in the configuration file, or auto_encrypt/auto_config be enabled")
 	}
@@ -624,6 +633,8 @@ func (c *Configurator) ExternalGRPCCert() *tls.Certificate {
 
 // VerifyIncomingRPC returns true if the configuration has enabled either
 // VerifyIncoming, or VerifyIncomingRPC
+//
+// TODO: Rename this.
 func (c *Configurator) VerifyIncomingRPC() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -641,6 +652,8 @@ func (c *Configurator) outgoingRPCTLSEnabled() bool {
 
 // MutualTLSCapable returns true if Configurator has a CA and a local TLS
 // certificate configured.
+//
+// TODO: Rename this.
 func (c *Configurator) MutualTLSCapable() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -673,6 +686,8 @@ func (c *Configurator) ServerSNI(dc, nodeName string) string {
 }
 
 // This function acquires a read lock because it reads from the config.
+//
+// TODO: thoroughly check we're holding locks in all the right places.
 func (c *Configurator) domain() string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -690,6 +705,8 @@ func (c *Configurator) serverNameOrNodeName() string {
 }
 
 // This function acquires a read lock because it reads from the config.
+//
+// TODO: Find out who uses this and rename it.
 func (c *Configurator) VerifyServerHostname() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -855,6 +872,8 @@ func (c *Configurator) OutgoingALPNRPCWrapper() ALPNWrapper {
 }
 
 // AutoEncryptCert returns the TLS certificate received from auto-encrypt.
+//
+// TODO: find out who uses this.
 func (c *Configurator) AutoEncryptCert() *x509.Certificate {
 	c.lock.RLock()
 	defer c.lock.RUnlock()

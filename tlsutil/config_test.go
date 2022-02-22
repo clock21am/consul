@@ -527,57 +527,231 @@ func TestConfigurator_NewConfigurator(t *testing.T) {
 	require.Nil(t, c)
 }
 
+// TODO: This is where we do the validation.
 func TestConfigurator_ErrorPropagation(t *testing.T) {
-	type variant struct {
-		config    Config
-		shouldErr bool
-	}
-	// TODO: comprehensive test coverage for all listeners
-	cafile := "../test/ca/root.cer"
-	capath := "../test/ca_path"
-	certfile := "../test/key/ourdomain.cer"
-	keyfile := "../test/key/ourdomain.key"
-	variants := []variant{
-		{Config{}, false}, // 0
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{TLSMinVersion: "tls9"}}}, true},                                                                   // 1
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{TLSMinVersion: ""}}}, false},                                                                      // 2
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: true, ListenerConfig: ListenerConfig{CAFile: "", CAPath: ""}}}, true},                                            // 3
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: false, ListenerConfig: ListenerConfig{CAFile: "", CAPath: ""}}}, false},                                          // 4
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: false, ListenerConfig: ListenerConfig{CAFile: cafile, CAPath: ""}}}, false},                                      // 5
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: false, ListenerConfig: ListenerConfig{CAFile: "", CAPath: capath}}}, false},                                      // 6
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: false, ListenerConfig: ListenerConfig{CAFile: cafile, CAPath: capath}}}, false},                                  // 7
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: true, ListenerConfig: ListenerConfig{CAFile: cafile, CAPath: ""}}}, false},                                       // 8
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: true, ListenerConfig: ListenerConfig{CAFile: "", CAPath: capath}}}, false},                                       // 9
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: true, ListenerConfig: ListenerConfig{CAFile: cafile, CAPath: capath}}}, false},                                   // 10
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: ""}}}, true},                                            // 11
-		{Config{HTTPS: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: ""}}, true},                                                                                             // 12
-		{Config{GRPC: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: ""}}, true},                                                                                              // 13
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: cafile, CAPath: ""}}}, true},                                        // 14
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: capath}}}, true},                                        // 15
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: capath, CertFile: certfile, KeyFile: keyfile}}}, false}, // 16
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{CertFile: "bogus", KeyFile: "bogus"}}}, true},                                                     // 17
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{CAFile: "bogus"}}}, true},                                                                         // 18
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{CAPath: "bogus"}}}, true},                                                                         // 19
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: cafile}}, AutoTLS: true}, false},                                    // 20
-	}
-	for _, v := range tlsVersions() {
-		variants = append(variants, variant{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{TLSMinVersion: v}}}, false})
-	}
+	const (
+		caFile   = "../test/ca/root.cer"
+		caPath   = "../test/ca_path"
+		certFile = "../test/key/ourdomain.cer"
+		keyFile  = "../test/key/ourdomain.key"
+	)
 
-	c := Configurator{}
-	for i, v := range variants {
-		info := fmt.Sprintf("case %d, config: %+v", i, v.config)
-		_, err1 := NewConfigurator(v.config, nil)
-		err2 := c.Update(v.config)
+	t.Run("empty config", func(t *testing.T) {
+		_, err := NewConfigurator(Config{}, nil)
+		require.NoError(t, err)
+		require.NoError(t, new(Configurator).Update(Config{}))
+	})
 
-		if v.shouldErr {
-			require.Error(t, err1, info)
-			require.Error(t, err2, info)
-		} else {
-			require.NoError(t, err1, info)
-			require.NoError(t, err2, info)
+	t.Run("common fields", func(t *testing.T) {
+		type testCase struct {
+			config  ListenerConfig
+			isValid bool
 		}
-	}
+
+		testCases := map[string]testCase{
+			"invalid TLSMinVersion": {
+				ListenerConfig{TLSMinVersion: "tls9"},
+				false,
+			},
+			"default TLSMinVersion": {
+				ListenerConfig{TLSMinVersion: ""},
+				true,
+			},
+			"invalid CAFile": {
+				ListenerConfig{CAFile: "bogus"},
+				false,
+			},
+			"invalid CAPath": {
+				ListenerConfig{CAPath: "bogus"},
+				false,
+			},
+			"invalid CertFile": {
+				ListenerConfig{
+					CertFile: "bogus",
+					KeyFile:  keyFile,
+				},
+				false,
+			},
+			"invalid KeyFile": {
+				ListenerConfig{
+					CertFile: certFile,
+					KeyFile:  "bogus",
+				},
+				false,
+			},
+			"VerifyIncoming set but no CA": {
+				ListenerConfig{
+					VerifyIncoming: true,
+					CAFile:         "",
+					CAPath:         "",
+					CertFile:       certFile,
+					KeyFile:        keyFile,
+				},
+				false,
+			},
+			"VerifyIncoming set but no CertFile": {
+				ListenerConfig{
+					VerifyIncoming: true,
+					CAFile:         caFile,
+					CertFile:       "",
+					KeyFile:        keyFile,
+				},
+				false,
+			},
+			"VerifyIncoming set but no KeyFile": {
+				ListenerConfig{
+					VerifyIncoming: true,
+					CAFile:         caFile,
+					CertFile:       certFile,
+					KeyFile:        "",
+				},
+				false,
+			},
+			"VerifyIncoming + CAFile": {
+				ListenerConfig{
+					VerifyIncoming: true,
+					CAFile:         caFile,
+					CertFile:       certFile,
+					KeyFile:        keyFile,
+				},
+				true,
+			},
+			"VerifyIncoming + CAPath": {
+				ListenerConfig{
+					VerifyIncoming: true,
+					CAPath:         caPath,
+					CertFile:       certFile,
+					KeyFile:        keyFile,
+				},
+				true,
+			},
+			"VerifyIncoming + invalid CAFile": {
+				ListenerConfig{
+					VerifyIncoming: true,
+					CAFile:         "bogus",
+					CertFile:       certFile,
+					KeyFile:        keyFile,
+				},
+				false,
+			},
+			"VerifyIncoming + invalid CAPath": {
+				ListenerConfig{
+					VerifyIncoming: true,
+					CAPath:         "bogus",
+					CertFile:       certFile,
+					KeyFile:        keyFile,
+				},
+				false,
+			},
+		}
+
+		for _, v := range tlsVersions() {
+			testCases[fmt.Sprintf("MinTLSVersion(%s)", v)] = testCase{
+				ListenerConfig{TLSMinVersion: v},
+				true,
+			}
+		}
+
+		for desc, tc := range testCases {
+			for _, ln := range []string{"internal", "grpc", "https"} {
+				info := fmt.Sprintf("%s => %s", ln, desc)
+
+				var cfg Config
+				switch ln {
+				case "internal":
+					cfg.InternalRPC.ListenerConfig = tc.config
+				case "grpc":
+					cfg.GRPC = tc.config
+				case "https":
+					cfg.HTTPS = tc.config
+				default:
+					t.Fatalf("unknown listener: %s", ln)
+				}
+
+				_, err1 := NewConfigurator(cfg, nil)
+				err2 := new(Configurator).Update(cfg)
+
+				if tc.isValid {
+					require.NoError(t, err1, info)
+					require.NoError(t, err2, info)
+				} else {
+					require.Error(t, err1, info)
+					require.Error(t, err2, info)
+				}
+			}
+		}
+	})
+
+	t.Run("internal RPC", func(t *testing.T) {
+		for desc, tc := range map[string]struct {
+			config  InternalRPCListenerConfig
+			isValid bool
+		}{
+			"VerifyOutgoing + CAFile": {
+				InternalRPCListenerConfig{
+					VerifyOutgoing: true,
+					ListenerConfig: ListenerConfig{CAFile: caFile},
+				},
+				true,
+			},
+			"VerifyOutgoing + CAPath": {
+				InternalRPCListenerConfig{
+					VerifyOutgoing: true,
+					ListenerConfig: ListenerConfig{CAPath: caPath},
+				},
+				true,
+			},
+			"VerifyOutgoing + CAFile + CAPath": {
+				InternalRPCListenerConfig{
+					VerifyOutgoing: true,
+					ListenerConfig: ListenerConfig{
+						CAFile: caFile,
+						CAPath: caPath,
+					},
+				},
+				true,
+			},
+			"VerifyOutgoing but no CA": {
+				InternalRPCListenerConfig{
+					VerifyOutgoing: true,
+					ListenerConfig: ListenerConfig{
+						CAFile: "",
+						CAPath: "",
+					},
+				},
+				false,
+			},
+		} {
+			cfg := Config{InternalRPC: tc.config}
+
+			_, err1 := NewConfigurator(cfg, nil)
+			err2 := new(Configurator).Update(cfg)
+
+			if tc.isValid {
+				require.NoError(t, err1, desc)
+				require.NoError(t, err2, desc)
+			} else {
+				require.Error(t, err1, desc)
+				require.Error(t, err2, desc)
+			}
+		}
+	})
+
+	t.Run("internal RPC, VerifyIncoming + AutoTLS", func(t *testing.T) {
+		cfg := Config{
+			InternalRPC: InternalRPCListenerConfig{
+				ListenerConfig: ListenerConfig{
+					VerifyIncoming: true,
+					CAFile:         caFile,
+				},
+			},
+			AutoTLS: true,
+		}
+
+		_, err := NewConfigurator(cfg, nil)
+		require.NoError(t, err)
+		require.NoError(t, new(Configurator).Update(cfg))
+	})
 }
 
 func TestConfigurator_CommonTLSConfigServerNameNodeName(t *testing.T) {
@@ -640,6 +814,8 @@ func TestConfigurator_LoadCAs(t *testing.T) {
 	}
 }
 
+// TODO: we can probably exercise this without going through `Update`.
+// TODO: Check whether we're also manually verifying the connection.
 func TestConfigurator_CommonTLSConfigInsecureSkipVerify(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
@@ -655,6 +831,7 @@ func TestConfigurator_CommonTLSConfigInsecureSkipVerify(t *testing.T) {
 	require.False(t, tlsConf.InsecureSkipVerify)
 }
 
+// TODO: This also probably doesn't need to go through `Update`.
 func TestConfigurator_CommonTLSConfigPreferServerCipherSuites(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
@@ -670,6 +847,7 @@ func TestConfigurator_CommonTLSConfigPreferServerCipherSuites(t *testing.T) {
 	require.True(t, tlsConf.PreferServerCipherSuites)
 }
 
+// TODO: Same (no Update).
 func TestConfigurator_CommonTLSConfigCipherSuites(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
@@ -683,6 +861,7 @@ func TestConfigurator_CommonTLSConfigCipherSuites(t *testing.T) {
 	require.Equal(t, conf.InternalRPC.CipherSuites, tlsConf.CipherSuites)
 }
 
+// TODO: Same (no Update).
 func TestConfigurator_CommonTLSConfigGetClientCertificate(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
@@ -707,6 +886,7 @@ func TestConfigurator_CommonTLSConfigGetClientCertificate(t *testing.T) {
 	require.Equal(t, c.internalRPC.autoTLS.cert, cert)
 }
 
+// TODO: Same (no Update).
 func TestConfigurator_CommonTLSConfigGetCertificate(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
@@ -732,6 +912,7 @@ func TestConfigurator_CommonTLSConfigGetCertificate(t *testing.T) {
 	require.Equal(t, c.internalRPC.cert, cert)
 }
 
+// TODO: Same (no Update).
 func TestConfigurator_CommonTLSConfigCAs(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
@@ -743,6 +924,7 @@ func TestConfigurator_CommonTLSConfigCAs(t *testing.T) {
 	require.Equal(t, c.internalRPC.caPool, c.commonTLSConfig(c.internalRPC, false).RootCAs)
 }
 
+// TODO: Same (no Update).
 func TestConfigurator_CommonTLSConfigTLSMinVersion(t *testing.T) {
 	c, err := NewConfigurator(Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{TLSMinVersion: ""}}}, nil)
 	require.NoError(t, err)
@@ -1249,6 +1431,7 @@ func TestConfigurator_OutgoingALPNRPCWrapper(t *testing.T) {
 	require.NotEqual(t, conn, cWrap)
 }
 
+// TODO: this should probably be combined with validation test.
 func TestConfigurator_UpdateChecks(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
@@ -1380,6 +1563,8 @@ func TestConfigurator_AuthorizeServerConn(t *testing.T) {
 	err = ioutil.WriteFile(caPath, []byte(caPEM), 0600)
 	require.NoError(t, err)
 
+	// TODO: fix this comment.
+	//
 	// Cert and key are not used, but required to get past validateConfig
 	signer, err := ParseSigner(caPK)
 	require.NoError(t, err)
