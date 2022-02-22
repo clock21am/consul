@@ -197,7 +197,7 @@ func (s *Server) handleConn(conn net.Conn, isTLS bool) {
 	}
 
 	// Enforce TLS if VerifyIncoming is set
-	if s.tlsConfigurator.VerifyIncomingRPC() && !isTLS && typ != pool.RPCTLS && typ != pool.RPCTLSInsecure {
+	if s.tlsConfigurator.VerifyIncomingInternalRPC() && !isTLS && typ != pool.RPCTLS && typ != pool.RPCTLSInsecure {
 		s.rpcLogger().Warn("Non-TLS connection attempted with VerifyIncoming set", "conn", logConn(conn))
 		conn.Close()
 		return

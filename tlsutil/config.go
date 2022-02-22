@@ -620,6 +620,8 @@ func (c *Configurator) commonTLSConfig(
 }
 
 // This function acquires a read lock because it reads from the config.
+//
+// TODO: do we need this?
 func (c *Configurator) Cert() *tls.Certificate {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -639,11 +641,11 @@ func (c *Configurator) ExternalGRPCCert() *tls.Certificate {
 	return c.grpc.cert
 }
 
-// VerifyIncomingRPC returns true if the configuration has enabled either
-// VerifyIncoming, or VerifyIncomingRPC
+// VerifyIncomingInternalRPC returns true if the configuration has enabled either
+// VerifyIncoming, or VerifyIncomingInternalRPC
 //
 // TODO: Rename this.
-func (c *Configurator) VerifyIncomingRPC() bool {
+func (c *Configurator) VerifyIncomingInternalRPC() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.internalRPC.base.VerifyIncoming
@@ -1025,7 +1027,7 @@ type TLSConn interface {
 // Note this check is only performed if VerifyServerHostname and VerifyIncomingRPC
 // are both enabled, otherwise it does no authorization.
 func (c *Configurator) AuthorizeServerConn(dc string, conn TLSConn) error {
-	if !c.VerifyIncomingRPC() || !c.VerifyServerHostname() {
+	if !c.VerifyIncomingInternalRPC() || !c.VerifyServerHostname() {
 		return nil
 	}
 
