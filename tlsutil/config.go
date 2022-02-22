@@ -279,70 +279,101 @@ func (c *Configurator) Update(config Config) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	loadKeyMaterial := func(lc ListenerConfig) (*tls.Certificate, *x509.CertPool, []string, error) {
-		cert, err := loadKeyPair(lc.CertFile, lc.KeyFile)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		pems, err := LoadCAs(lc.CAFile, lc.CAPath)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		pool, err := newX509CertPool(pems)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		return cert, pool, pems, nil
+	// Validate config for all listeners up front, before applying anything, so
+	// that this method is atomic.
+	grpcCert, grpcPool, grpcPems, err := validateAndLoadListenerConfig(config.GRPC)
+	if err != nil {
+		return err
 	}
 
-	{
-		cert, pool, pems, err := loadKeyMaterial(config.GRPC)
-		if err != nil {
-			return err
-		}
-		c.grpc.cert = cert
-		c.grpc.caPool = pool
-		c.grpc.caPems = pems
-		c.grpc.base = config.GRPC
+	httpsCert, httpsPool, httpsPems, err := validateAndLoadListenerConfig(config.HTTPS)
+	if err != nil {
+		return err
 	}
 
-	{
-		cert, pool, pems, err := loadKeyMaterial(config.HTTPS)
-		if err != nil {
-			return err
-		}
-		c.https.cert = cert
-		c.https.caPool = pool
-		c.https.caPems = pems
-		c.https.base = config.HTTPS
+	internalCert, internalManualPool, internalPems, err := validateAndLoadListenerConfig(config.InternalRPC.ListenerConfig)
+	if err != nil {
+		return err
 	}
 
-	{
-		cert, pool, pems, err := loadKeyMaterial(config.InternalRPC.ListenerConfig)
-		if err != nil {
-			return err
-		}
-		c.internalRPC.cert = cert
-		c.internalRPC.manualCAPool = pool
-		c.internalRPC.caPems = pems
-
-		pool, err = newX509CertPool(pems, c.internalRPC.autoTLS.extraCAPems, c.internalRPC.autoTLS.connectCAPems)
-		if err != nil {
-			return err
-		}
-		c.internalRPC.caPool = pool
-		c.internalRPC.base = config.InternalRPC
-
-		// TODO: Validate gRPC and https configuration.
-		if err = validateConfig(config, pool, cert); err != nil {
-			return err
-		}
+	// Build a combined CA pool with the additional certificates provided by
+	// auto-encrypt/auto-config.
+	internalPool, err := newX509CertPool(internalPems, c.internalRPC.autoTLS.extraCAPems, c.internalRPC.autoTLS.connectCAPems)
+	if err != nil {
+		return err
+	}
+	if err := validateInternalRPCListenerConfig(config, internalCert, internalPool); err != nil {
+		return err
 	}
 
 	c.base = &config
 
+	c.grpc.cert = grpcCert
+	c.grpc.caPool = grpcPool
+	c.grpc.caPems = grpcPems
+	c.grpc.base = config.GRPC
+
+	c.https.cert = httpsCert
+	c.https.caPool = httpsPool
+	c.https.caPems = httpsPems
+	c.https.base = config.HTTPS
+
+	c.internalRPC.cert = internalCert
+	c.internalRPC.caPool = internalPool
+	c.internalRPC.caPems = internalPems
+	c.internalRPC.base = config.InternalRPC
+	c.internalRPC.manualCAPool = internalManualPool
+
 	atomic.AddUint64(&c.version, 1)
 	c.log("Update")
+	return nil
+}
+
+func validateAndLoadListenerConfig(lc ListenerConfig) (*tls.Certificate, *x509.CertPool, []string, error) {
+	if lc.TLSMinVersion != "" {
+		if _, ok := tlsLookup[lc.TLSMinVersion]; !ok {
+			versions := strings.Join(tlsVersions(), ", ")
+			return nil, nil, nil, fmt.Errorf("TLSMinVersion: value %s not supported, please specify one of [%s]", lc.TLSMinVersion, versions)
+		}
+	}
+
+	pems, err := LoadCAs(lc.CAFile, lc.CAPath)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	pool, err := newX509CertPool(pems)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if lc.VerifyIncoming && pool == nil {
+		// both auto-config and auto-encrypt require verifying the connection from the client to the server for secure
+		// operation. In order to be able to verify the servers certificate we must have some CA certs already provided.
+		// Therefore, even though both of those features can push down extra CA certificates which could be used to
+		// verify incoming connections, we still must consider it an error if none are provided in the initial configuration
+		// as those features cannot be successfully enabled without providing CA certificates to use those features.
+		return nil, nil, nil, fmt.Errorf("VerifyIncoming set but no CA certificates were provided")
+	}
+
+	cert, err := loadKeyPair(lc.CertFile, lc.KeyFile)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return cert, pool, pems, nil
+}
+
+func validateInternalRPCListenerConfig(cfg Config, cert *tls.Certificate, caPool *x509.CertPool) error {
+	if cfg.InternalRPC.VerifyOutgoing && caPool == nil {
+		return fmt.Errorf("VerifyIncoming set but no CA certificates were provided")
+	}
+
+	// We will use the auto_encrypt/auto_config cert for TLS in the incoming APIs when available. Therefore the check
+	// here will ensure that either we enabled one of those two features or a certificate and key were provided manually
+	if cfg.InternalRPC.VerifyIncoming && (cert == nil && !cfg.AutoTLS) {
+		return fmt.Errorf("VerifyIncoming requires either a Cert and Key pair in the configuration file, or auto_encrypt/auto_config be enabled")
+	}
+
 	return nil
 }
 
@@ -358,9 +389,11 @@ func (c *Configurator) UpdateAutoTLSCA(connectCAPems []string) error {
 	if err != nil {
 		return err
 	}
-	if err = validateConfig(*c.base, pool, c.internalRPC.cert); err != nil {
+
+	if err := validateInternalRPCListenerConfig(*c.base, c.internalRPC.cert, pool); err != nil {
 		return err
 	}
+
 	c.internalRPC.autoTLS.connectCAPems = connectCAPems
 	c.internalRPC.caPool = pool
 	atomic.AddUint64(&c.version, 1)
@@ -399,6 +432,7 @@ func (c *Configurator) UpdateAutoTLS(manualCAPems, connectCAPems []string, pub, 
 	if err != nil {
 		return err
 	}
+
 	c.internalRPC.autoTLS.extraCAPems = manualCAPems
 	c.internalRPC.autoTLS.connectCAPems = connectCAPems
 	c.internalRPC.autoTLS.cert = &cert
@@ -453,46 +487,6 @@ func newX509CertPool(groups ...[]string) (*x509.CertPool, error) {
 		return nil, nil
 	}
 	return pool, nil
-}
-
-// validateConfig checks that config is valid and does not conflict with the pool
-// or cert.
-func validateConfig(config Config, pool *x509.CertPool, cert *tls.Certificate) error {
-	// Check if a minimum TLS version was set
-	if config.InternalRPC.TLSMinVersion != "" {
-		if _, ok := tlsLookup[config.InternalRPC.TLSMinVersion]; !ok {
-			versions := strings.Join(tlsVersions(), ", ")
-			return fmt.Errorf("TLSMinVersion: value %s not supported, please specify one of [%s]", config.InternalRPC.TLSMinVersion, versions)
-		}
-	}
-
-	// Ensure we have a CA if VerifyOutgoing is set
-	if config.InternalRPC.VerifyOutgoing && pool == nil {
-		return fmt.Errorf("VerifyOutgoing set, and no CA certificate provided!")
-	}
-
-	// Ensure we have a CA and cert if VerifyIncoming is set
-	if config.anyVerifyIncoming() {
-		if pool == nil {
-			// both auto-config and auto-encrypt require verifying the connection from the client to the server for secure
-			// operation. In order to be able to verify the servers certificate we must have some CA certs already provided.
-			// Therefore, even though both of those features can push down extra CA certificates which could be used to
-			// verify incoming connections, we still must consider it an error if none are provided in the initial configuration
-			// as those features cannot be successfully enabled without providing CA certificates to use those features.
-			return fmt.Errorf("VerifyIncoming set but no CA certificates were provided")
-		}
-
-		// We will use the auto_encrypt/auto_config cert for TLS in the incoming APIs when available. Therefore the check
-		// here will ensure that either we enabled one of those two features or a certificate and key were provided manually
-		if cert == nil && !config.AutoTLS {
-			return fmt.Errorf("VerifyIncoming requires either a Cert and Key pair in the configuration file, or auto_encrypt/auto_config be enabled")
-		}
-	}
-	return nil
-}
-
-func (c Config) anyVerifyIncoming() bool {
-	return c.InternalRPC.VerifyIncoming || c.GRPC.VerifyIncoming || c.HTTPS.VerifyIncoming
 }
 
 func loadKeyPair(certFile, keyFile string) (*tls.Certificate, error) {

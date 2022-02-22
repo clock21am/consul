@@ -529,9 +529,8 @@ func TestConfigurator_NewConfigurator(t *testing.T) {
 
 func TestConfigurator_ErrorPropagation(t *testing.T) {
 	type variant struct {
-		config       Config
-		shouldErr    bool
-		excludeCheck bool
+		config    Config
+		shouldErr bool
 	}
 	// TODO: comprehensive test coverage for all listeners
 	cafile := "../test/ca/root.cer"
@@ -539,30 +538,30 @@ func TestConfigurator_ErrorPropagation(t *testing.T) {
 	certfile := "../test/key/ourdomain.cer"
 	keyfile := "../test/key/ourdomain.key"
 	variants := []variant{
-		{Config{}, false, false}, // 0
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{TLSMinVersion: "tls9"}}}, true, false},                                                                   // 1
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{TLSMinVersion: ""}}}, false, false},                                                                      // 2
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: true, ListenerConfig: ListenerConfig{CAFile: "", CAPath: ""}}}, true, false},                                            // 6
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: false, ListenerConfig: ListenerConfig{CAFile: "", CAPath: ""}}}, false, false},                                          // 7
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: false, ListenerConfig: ListenerConfig{CAFile: cafile, CAPath: ""}}}, false, false},                                      // 8
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: false, ListenerConfig: ListenerConfig{CAFile: "", CAPath: capath}}}, false, false},                                      // 9
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: false, ListenerConfig: ListenerConfig{CAFile: cafile, CAPath: capath}}}, false, false},                                  // 10
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: true, ListenerConfig: ListenerConfig{CAFile: cafile, CAPath: ""}}}, false, false},                                       // 11
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: true, ListenerConfig: ListenerConfig{CAFile: "", CAPath: capath}}}, false, false},                                       // 12
-		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: true, ListenerConfig: ListenerConfig{CAFile: cafile, CAPath: capath}}}, false, false},                                   // 13
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: ""}}}, true, false},                                            // 15
-		{Config{HTTPS: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: ""}}, true, false},                                                                                             // 16
-		{Config{GRPC: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: ""}}, true, false},                                                                                              // 16
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: cafile, CAPath: ""}}}, true, false},                                        // 17
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: capath}}}, true, false},                                        // 18
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: capath, CertFile: certfile, KeyFile: keyfile}}}, false, false}, // 19
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{CertFile: "bogus", KeyFile: "bogus"}}}, true, true},                                                      // 20
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{CAFile: "bogus"}}}, true, true},                                                                          // 21
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{CAPath: "bogus"}}}, true, true},                                                                          // 22
-		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: cafile}}, AutoTLS: true}, false, false},                                    // 23
+		{Config{}, false}, // 0
+		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{TLSMinVersion: "tls9"}}}, true},                                                                   // 1
+		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{TLSMinVersion: ""}}}, false},                                                                      // 2
+		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: true, ListenerConfig: ListenerConfig{CAFile: "", CAPath: ""}}}, true},                                            // 3
+		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: false, ListenerConfig: ListenerConfig{CAFile: "", CAPath: ""}}}, false},                                          // 4
+		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: false, ListenerConfig: ListenerConfig{CAFile: cafile, CAPath: ""}}}, false},                                      // 5
+		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: false, ListenerConfig: ListenerConfig{CAFile: "", CAPath: capath}}}, false},                                      // 6
+		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: false, ListenerConfig: ListenerConfig{CAFile: cafile, CAPath: capath}}}, false},                                  // 7
+		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: true, ListenerConfig: ListenerConfig{CAFile: cafile, CAPath: ""}}}, false},                                       // 8
+		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: true, ListenerConfig: ListenerConfig{CAFile: "", CAPath: capath}}}, false},                                       // 9
+		{Config{InternalRPC: InternalRPCListenerConfig{VerifyOutgoing: true, ListenerConfig: ListenerConfig{CAFile: cafile, CAPath: capath}}}, false},                                   // 10
+		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: ""}}}, true},                                            // 11
+		{Config{HTTPS: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: ""}}, true},                                                                                             // 12
+		{Config{GRPC: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: ""}}, true},                                                                                              // 13
+		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: cafile, CAPath: ""}}}, true},                                        // 14
+		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: capath}}}, true},                                        // 15
+		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: "", CAPath: capath, CertFile: certfile, KeyFile: keyfile}}}, false}, // 16
+		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{CertFile: "bogus", KeyFile: "bogus"}}}, true},                                                     // 17
+		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{CAFile: "bogus"}}}, true},                                                                         // 18
+		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{CAPath: "bogus"}}}, true},                                                                         // 19
+		{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{VerifyIncoming: true, CAFile: cafile}}, AutoTLS: true}, false},                                    // 20
 	}
 	for _, v := range tlsVersions() {
-		variants = append(variants, variant{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{TLSMinVersion: v}}}, false, false})
+		variants = append(variants, variant{Config{InternalRPC: InternalRPCListenerConfig{ListenerConfig: ListenerConfig{TLSMinVersion: v}}}, false})
 	}
 
 	c := Configurator{}
@@ -571,28 +570,12 @@ func TestConfigurator_ErrorPropagation(t *testing.T) {
 		_, err1 := NewConfigurator(v.config, nil)
 		err2 := c.Update(v.config)
 
-		var err3 error
-		if !v.excludeCheck {
-			cert, err := loadKeyPair(v.config.InternalRPC.CertFile, v.config.InternalRPC.KeyFile)
-			require.NoError(t, err, info)
-			pems, err := LoadCAs(v.config.InternalRPC.CAFile, v.config.InternalRPC.CAPath)
-			require.NoError(t, err, info)
-			pool, err := newX509CertPool(pems)
-			require.NoError(t, err, info)
-			err3 = validateConfig(v.config, pool, cert)
-		}
 		if v.shouldErr {
 			require.Error(t, err1, info)
 			require.Error(t, err2, info)
-			if !v.excludeCheck {
-				require.Error(t, err3, info)
-			}
 		} else {
 			require.NoError(t, err1, info)
 			require.NoError(t, err2, info)
-			if !v.excludeCheck {
-				require.NoError(t, err3, info)
-			}
 		}
 	}
 }
