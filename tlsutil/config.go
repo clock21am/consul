@@ -154,18 +154,8 @@ func SpecificDC(dc string, tlsWrap DCWrapper) Wrapper {
 	}
 }
 
-// autoTLS stores configuration that is received from the auto-encrypt or
-// auto-config features.
-type autoTLS struct {
-	extraCAPems          []string
-	connectCAPems        []string
-	cert                 *tls.Certificate
-	verifyServerHostname bool
-}
-
 type listenerConfig struct {
-	cfg ListenerConfig
-
+	cfg    ListenerConfig
 	cert   *tls.Certificate
 	caPems []string
 	caPool *x509.CertPool
@@ -184,7 +174,14 @@ type internalRPCConfig struct {
 	// than destructively merging it in?
 	manualCAPool *x509.CertPool
 
-	autoTLS autoTLS
+	// autoTLS stores configuration that is received from the auto-encrypt or
+	// auto-config features.
+	autoTLS struct {
+		extraCAPems          []string
+		connectCAPems        []string
+		cert                 *tls.Certificate
+		verifyServerHostname bool
+	}
 }
 
 // Configurator provides tls.Config and net.Dial wrappers to enable TLS for
