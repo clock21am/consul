@@ -36,7 +36,7 @@ func insecureRPCClient(s *Server, c tlsutil.Config) (rpc.ClientCodec, error) {
 	if err != nil {
 		return nil, err
 	}
-	wrapper := configurator.OutgoingRPCWrapper()
+	wrapper := configurator.OutgoingInternalRPCWrapper()
 	if wrapper == nil {
 		return nil, err
 	}

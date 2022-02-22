@@ -117,7 +117,7 @@ func NewBaseDeps(configLoader ConfigLoader, logOut io.Writer) (BaseDeps, error) 
 	d.GRPCConnPool = grpc.NewClientConnPool(grpc.ClientConnPoolConfig{
 		Servers:               builder,
 		SrcAddr:               d.ConnPool.SrcAddr,
-		TLSWrapper:            grpc.TLSWrapper(d.TLSConfigurator.OutgoingRPCWrapper()),
+		TLSWrapper:            grpc.TLSWrapper(d.TLSConfigurator.OutgoingInternalRPCWrapper()),
 		ALPNWrapper:           grpc.ALPNWrapper(d.TLSConfigurator.OutgoingALPNRPCWrapper()),
 		UseTLSForDC:           d.TLSConfigurator.UseTLS,
 		DialingFromServer:     cfg.ServerMode,

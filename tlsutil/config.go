@@ -858,10 +858,10 @@ func (c *Configurator) outgoingALPNRPCConfig() *tls.Config {
 	return config
 }
 
-// OutgoingRPCWrapper wraps the result of OutgoingRPCConfig in a DCWrapper. It
+// OutgoingInternalRPCWrapper wraps the result of OutgoingRPCConfig in a DCWrapper. It
 // decides if verify server hostname should be used.
-func (c *Configurator) OutgoingRPCWrapper() DCWrapper {
-	c.log("OutgoingRPCWrapper")
+func (c *Configurator) OutgoingInternalRPCWrapper() DCWrapper {
+	c.log("OutgoingInternalRPCWrapper")
 
 	// Generate the wrapper based on dc
 	return func(dc string, conn net.Conn) (net.Conn, error) {

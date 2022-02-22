@@ -684,7 +684,7 @@ func TestRPC_PreventsTLSNesting(t *testing.T) {
 			require.NoError(t, err)
 
 			// Start tls client
-			tlsWrap := s1.tlsConfigurator.OutgoingRPCWrapper()
+			tlsWrap := s1.tlsConfigurator.OutgoingInternalRPCWrapper()
 			tlsConn, err := tlsWrap("dc1", conn)
 			require.NoError(t, err)
 
@@ -728,7 +728,7 @@ func connectClient(t *testing.T, s1 *Server, mb pool.RPCType, useTLS, wantOpen b
 	t.Helper()
 
 	addr := s1.config.RPCAdvertise
-	tlsWrap := s1.tlsConfigurator.OutgoingRPCWrapper()
+	tlsWrap := s1.tlsConfigurator.OutgoingInternalRPCWrapper()
 
 	conn, err := net.DialTimeout("tcp", addr.String(), time.Second)
 	require.NoError(t, err)
@@ -1443,7 +1443,7 @@ func TestRPC_AuthorizeRaftRPC(t *testing.T) {
 	})
 
 	useTLSByte := func(t *testing.T, c *tlsutil.Configurator) net.Conn {
-		wrapper := tlsutil.SpecificDC("dc1", c.OutgoingRPCWrapper())
+		wrapper := tlsutil.SpecificDC("dc1", c.OutgoingInternalRPCWrapper())
 		tlsEnabled := func(_ raft.ServerAddress) bool {
 			return true
 		}

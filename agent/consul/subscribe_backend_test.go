@@ -65,7 +65,7 @@ func TestSubscribeBackend_IntegrationWithServer_TLSEnabled(t *testing.T) {
 	{
 		pool := grpc.NewClientConnPool(grpc.ClientConnPoolConfig{
 			Servers:               builder,
-			TLSWrapper:            grpc.TLSWrapper(client.tlsConfigurator.OutgoingRPCWrapper()),
+			TLSWrapper:            grpc.TLSWrapper(client.tlsConfigurator.OutgoingInternalRPCWrapper()),
 			UseTLSForDC:           client.tlsConfigurator.UseTLS,
 			DialingFromServer:     true,
 			DialingFromDatacenter: "dc1",
@@ -102,7 +102,7 @@ func TestSubscribeBackend_IntegrationWithServer_TLSEnabled(t *testing.T) {
 	{
 		pool := grpc.NewClientConnPool(grpc.ClientConnPoolConfig{
 			Servers:               builder,
-			TLSWrapper:            grpc.TLSWrapper(client.tlsConfigurator.OutgoingRPCWrapper()),
+			TLSWrapper:            grpc.TLSWrapper(client.tlsConfigurator.OutgoingInternalRPCWrapper()),
 			UseTLSForDC:           client.tlsConfigurator.UseTLS,
 			DialingFromServer:     true,
 			DialingFromDatacenter: "dc1",
@@ -182,7 +182,7 @@ func TestSubscribeBackend_IntegrationWithServer_TLSReload(t *testing.T) {
 
 	pool := grpc.NewClientConnPool(grpc.ClientConnPoolConfig{
 		Servers:               builder,
-		TLSWrapper:            grpc.TLSWrapper(client.tlsConfigurator.OutgoingRPCWrapper()),
+		TLSWrapper:            grpc.TLSWrapper(client.tlsConfigurator.OutgoingInternalRPCWrapper()),
 		UseTLSForDC:           client.tlsConfigurator.UseTLS,
 		DialingFromServer:     true,
 		DialingFromDatacenter: "dc1",
@@ -316,7 +316,7 @@ func TestSubscribeBackend_IntegrationWithServer_DeliversAllMessages(t *testing.T
 
 	pool := grpc.NewClientConnPool(grpc.ClientConnPoolConfig{
 		Servers:               builder,
-		TLSWrapper:            grpc.TLSWrapper(client.tlsConfigurator.OutgoingRPCWrapper()),
+		TLSWrapper:            grpc.TLSWrapper(client.tlsConfigurator.OutgoingInternalRPCWrapper()),
 		UseTLSForDC:           client.tlsConfigurator.UseTLS,
 		DialingFromServer:     true,
 		DialingFromDatacenter: "dc1",

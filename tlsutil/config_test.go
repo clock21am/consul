@@ -94,7 +94,7 @@ func TestConfigurator_outgoingWrapper_OK(t *testing.T) {
 
 	c, err := NewConfigurator(config, nil)
 	require.NoError(t, err)
-	wrap := c.OutgoingRPCWrapper()
+	wrap := c.OutgoingInternalRPCWrapper()
 	require.NotNil(t, wrap)
 
 	tlsClient, err := wrap("dc1", client)
@@ -130,7 +130,7 @@ func TestConfigurator_outgoingWrapper_noverify_OK(t *testing.T) {
 
 	c, err := NewConfigurator(config, nil)
 	require.NoError(t, err)
-	wrap := c.OutgoingRPCWrapper()
+	wrap := c.OutgoingInternalRPCWrapper()
 	require.NotNil(t, wrap)
 
 	tlsClient, err := wrap("dc1", client)
@@ -167,7 +167,7 @@ func TestConfigurator_outgoingWrapper_BadDC(t *testing.T) {
 
 	c, err := NewConfigurator(config, nil)
 	require.NoError(t, err)
-	wrap := c.OutgoingRPCWrapper()
+	wrap := c.OutgoingInternalRPCWrapper()
 
 	tlsClient, err := wrap("dc2", client)
 	require.NoError(t, err)
@@ -201,7 +201,7 @@ func TestConfigurator_outgoingWrapper_BadCert(t *testing.T) {
 
 	c, err := NewConfigurator(config, nil)
 	require.NoError(t, err)
-	wrap := c.OutgoingRPCWrapper()
+	wrap := c.OutgoingInternalRPCWrapper()
 
 	tlsClient, err := wrap("dc1", client)
 	require.NoError(t, err)
@@ -1401,7 +1401,7 @@ func TestConfigurator_OutgoingALPNRPCConfig(t *testing.T) {
 
 func TestConfigurator_OutgoingRPCWrapper(t *testing.T) {
 	c := &Configurator{base: &Config{}}
-	wrapper := c.OutgoingRPCWrapper()
+	wrapper := c.OutgoingInternalRPCWrapper()
 	require.NotNil(t, wrapper)
 	conn := &net.TCPConn{}
 	cWrap, err := wrapper("", conn)
@@ -1418,7 +1418,7 @@ func TestConfigurator_OutgoingRPCWrapper(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	wrapper = c.OutgoingRPCWrapper()
+	wrapper = c.OutgoingInternalRPCWrapper()
 	require.NotNil(t, wrapper)
 	cWrap, err = wrapper("", conn)
 	require.EqualError(t, err, "invalid argument")
@@ -1427,7 +1427,7 @@ func TestConfigurator_OutgoingRPCWrapper(t *testing.T) {
 
 func TestConfigurator_OutgoingALPNRPCWrapper(t *testing.T) {
 	c := &Configurator{base: &Config{}}
-	wrapper := c.OutgoingRPCWrapper()
+	wrapper := c.OutgoingInternalRPCWrapper()
 	require.NotNil(t, wrapper)
 	conn := &net.TCPConn{}
 	cWrap, err := wrapper("", conn)
@@ -1444,7 +1444,7 @@ func TestConfigurator_OutgoingALPNRPCWrapper(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	wrapper = c.OutgoingRPCWrapper()
+	wrapper = c.OutgoingInternalRPCWrapper()
 	require.NotNil(t, wrapper)
 	cWrap, err = wrapper("", conn)
 	require.EqualError(t, err, "invalid argument")

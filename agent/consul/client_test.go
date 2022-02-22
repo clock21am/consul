@@ -537,7 +537,7 @@ func newDefaultDeps(t *testing.T, c *Config) Deps {
 		ConnPool:        connPool,
 		GRPCConnPool: grpc.NewClientConnPool(grpc.ClientConnPoolConfig{
 			Servers:               builder,
-			TLSWrapper:            grpc.TLSWrapper(tls.OutgoingRPCWrapper()),
+			TLSWrapper:            grpc.TLSWrapper(tls.OutgoingInternalRPCWrapper()),
 			UseTLSForDC:           tls.UseTLS,
 			DialingFromServer:     true,
 			DialingFromDatacenter: c.Datacenter,

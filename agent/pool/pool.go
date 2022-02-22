@@ -11,9 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/yamux"
+
 	msgpackrpc "github.com/hashicorp/consul-net-rpc/net-rpc-msgpackrpc"
 	"github.com/hashicorp/consul-net-rpc/net/rpc"
-	"github.com/hashicorp/yamux"
 
 	"github.com/hashicorp/consul/agent/structs"
 	"github.com/hashicorp/consul/lib"
@@ -342,7 +343,7 @@ func (p *ConnPool) dial(
 
 	// Check if TLS is enabled
 	if p.TLSConfigurator.UseTLS(dc) {
-		wrapper := p.TLSConfigurator.OutgoingRPCWrapper()
+		wrapper := p.TLSConfigurator.OutgoingInternalRPCWrapper()
 		// Switch the connection into TLS mode
 		if _, err := conn.Write([]byte{byte(tlsRPCType)}); err != nil {
 			conn.Close()
