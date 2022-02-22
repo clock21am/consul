@@ -171,12 +171,6 @@ type listenerConfig struct {
 	caPool *x509.CertPool
 }
 
-func (lc listenerConfig) getBase() ListenerConfig             { return lc.base }
-func (lc listenerConfig) serverCertificate() *tls.Certificate { return lc.cert }
-func (lc listenerConfig) clientCertificate() *tls.Certificate { return lc.cert }
-func (lc listenerConfig) getCAPool() *x509.CertPool           { return lc.caPool }
-func (ls listenerConfig) getVerifyServerHostname() bool       { return false }
-
 type internalRPCConfig struct {
 	listenerConfig
 
@@ -191,32 +185,6 @@ type internalRPCConfig struct {
 	manualCAPool *x509.CertPool
 
 	autoTLS autoTLS
-}
-
-func (ic internalRPCConfig) getBase() ListenerConfig { return ic.base.ListenerConfig }
-
-func (ic internalRPCConfig) serverCertificate() *tls.Certificate {
-	if ic.cert != nil {
-		return ic.cert
-	}
-	return ic.autoTLS.cert
-}
-
-func (ic internalRPCConfig) clientCertificate() *tls.Certificate {
-	if ic.autoTLS.cert != nil {
-		return ic.autoTLS.cert
-	}
-	return ic.cert
-}
-
-func (ic internalRPCConfig) getVerifyServerHostname() bool { return ic.base.VerifyServerHostname }
-
-type config interface {
-	getBase() ListenerConfig
-	serverCertificate() *tls.Certificate
-	clientCertificate() *tls.Certificate
-	getCAPool() *x509.CertPool
-	getVerifyServerHostname() bool
 }
 
 // Configurator provides tls.Config and net.Dial wrappers to enable TLS for
@@ -568,35 +536,63 @@ func LoadCAs(caFile, caPath string) ([]string, error) {
 	return pems, nil
 }
 
+func (c *Configurator) internalRPCTLSConfig(verifyIncoming bool) *tls.Config {
+	cfg := c.internalRPC
+
+	serverCert := cfg.cert
+	if serverCert == nil {
+		serverCert = cfg.autoTLS.cert
+	}
+
+	clientCert := cfg.autoTLS.cert
+	if clientCert == nil {
+		clientCert = cfg.cert
+	}
+
+	config := c.commonTLSConfig(
+		cfg.listenerConfig,
+		serverCert,
+		clientCert,
+		verifyIncoming,
+	)
+	config.InsecureSkipVerify = !cfg.base.VerifyServerHostname
+
+	return config
+}
+
 // commonTLSConfig generates a *tls.Config from the base configuration the
 // Configurator has. It accepts an additional flag in case a config is needed
 // for incoming TLS connections.
 // This function acquires a read lock because it reads from the config.
-func (c *Configurator) commonTLSConfig(cfg config, verifyIncoming bool) *tls.Config {
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: !cfg.getVerifyServerHostname(),
-	}
+//
+// TODO: fix this comment.
+func (c *Configurator) commonTLSConfig(
+	cfg listenerConfig,
+	serverCert, clientCert *tls.Certificate,
+	verifyIncoming bool,
+) *tls.Config {
+	tlsConfig := &tls.Config{}
 
 	// Set the cipher suites
-	if len(cfg.getBase().CipherSuites) != 0 {
-		tlsConfig.CipherSuites = cfg.getBase().CipherSuites
+	if len(cfg.base.CipherSuites) != 0 {
+		tlsConfig.CipherSuites = cfg.base.CipherSuites
 	}
 
-	tlsConfig.PreferServerCipherSuites = cfg.getBase().PreferServerCipherSuites
+	tlsConfig.PreferServerCipherSuites = cfg.base.PreferServerCipherSuites
 
 	// GetCertificate is used when acting as a server and responding to
 	// client requests. Default to the manually configured cert, but allow
 	// autoEncrypt cert too so that a client can encrypt incoming
 	// connections without having a manual cert configured.
 	tlsConfig.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-		return cfg.serverCertificate(), nil
+		return serverCert, nil
 	}
 
 	// GetClientCertificate is used when acting as a client and responding
 	// to a server requesting a certificate. Return the autoEncrypt certificate
 	// if possible, otherwise default to the manually provisioned one.
 	tlsConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-		cert := cfg.clientCertificate()
+		cert := clientCert
 
 		if cert == nil {
 			// the return value MUST not be nil but an empty certificate will be
@@ -607,13 +603,13 @@ func (c *Configurator) commonTLSConfig(cfg config, verifyIncoming bool) *tls.Con
 		return cert, nil
 	}
 
-	tlsConfig.ClientCAs = cfg.getCAPool()
-	tlsConfig.RootCAs = cfg.getCAPool()
+	tlsConfig.ClientCAs = cfg.caPool
+	tlsConfig.RootCAs = cfg.caPool
 
 	// This is possible because tlsLookup also contains "" with golang's
 	// default (tls10). And because the initial check makes sure the
 	// version correctly matches.
-	tlsConfig.MinVersion = tlsLookup[cfg.getBase().TLSMinVersion]
+	tlsConfig.MinVersion = tlsLookup[cfg.base.TLSMinVersion]
 
 	// Set ClientAuth if necessary
 	if verifyIncoming {
@@ -733,7 +729,12 @@ func (c *Configurator) IncomingExternalGRPCConfig() *tls.Config {
 	// TODO: When implementing the old deprecated fields, we need to maintain the
 	// previous behaviour where we'd never verify incoming on gRPC connections
 	// because there wasn't a corresponding option.
-	config := c.commonTLSConfig(c.grpc, c.grpc.base.VerifyIncoming)
+	config := c.commonTLSConfig(
+		c.grpc,
+		c.grpc.cert,
+		c.grpc.cert,
+		c.grpc.base.VerifyIncoming,
+	)
 	config.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
 		return c.IncomingExternalGRPCConfig(), nil
 	}
@@ -743,7 +744,7 @@ func (c *Configurator) IncomingExternalGRPCConfig() *tls.Config {
 // IncomingRPCConfig generates a *tls.Config for incoming RPC connections.
 func (c *Configurator) IncomingRPCConfig() *tls.Config {
 	c.log("IncomingRPCConfig")
-	config := c.commonTLSConfig(c.internalRPC, c.internalRPC.base.VerifyIncoming)
+	config := c.internalRPCTLSConfig(c.internalRPC.base.VerifyIncoming)
 	config.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
 		return c.IncomingRPCConfig(), nil
 	}
@@ -756,7 +757,7 @@ func (c *Configurator) IncomingALPNRPCConfig(alpnProtos []string) *tls.Config {
 	c.log("IncomingALPNRPCConfig")
 	// Since the ALPN-RPC variation is indirectly exposed to the internet via
 	// mesh gateways we force mTLS and full server name verification.
-	config := c.commonTLSConfig(c.internalRPC, true)
+	config := c.internalRPCTLSConfig(true)
 	config.InsecureSkipVerify = false
 
 	config.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
@@ -773,7 +774,7 @@ func (c *Configurator) IncomingALPNRPCConfig(alpnProtos []string) *tls.Config {
 // usecase ever.
 func (c *Configurator) IncomingInsecureRPCConfig() *tls.Config {
 	c.log("IncomingInsecureRPCConfig")
-	config := c.commonTLSConfig(c.internalRPC, false)
+	config := c.internalRPCTLSConfig(false)
 	config.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
 		return c.IncomingInsecureRPCConfig(), nil
 	}
@@ -787,7 +788,12 @@ func (c *Configurator) IncomingHTTPSConfig() *tls.Config {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
-	config := c.commonTLSConfig(c.https, c.https.base.VerifyIncoming)
+	config := c.commonTLSConfig(
+		c.https,
+		c.https.cert,
+		c.https.cert,
+		c.https.base.VerifyIncoming,
+	)
 	config.NextProtos = []string{"h2", "http/1.1"}
 	config.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
 		return c.IncomingHTTPSConfig(), nil
@@ -816,7 +822,7 @@ func (c *Configurator) OutgoingTLSConfigForCheck(skipVerify bool, serverName str
 	if serverName == "" {
 		serverName = c.serverNameOrNodeName()
 	}
-	config := c.commonTLSConfig(c.internalRPC, false)
+	config := c.internalRPCTLSConfig(false)
 	config.InsecureSkipVerify = skipVerify
 	config.ServerName = serverName
 
@@ -831,7 +837,7 @@ func (c *Configurator) OutgoingRPCConfig() *tls.Config {
 	if !c.outgoingRPCTLSEnabled() {
 		return nil
 	}
-	return c.commonTLSConfig(c.internalRPC, false)
+	return c.internalRPCTLSConfig(false)
 }
 
 // outgoingALPNRPCConfig generates a *tls.Config for outgoing RPC connections
@@ -847,7 +853,7 @@ func (c *Configurator) outgoingALPNRPCConfig() *tls.Config {
 
 	// Since the ALPN-RPC variation is indirectly exposed to the internet via
 	// mesh gateways we force mTLS and full server name verification.
-	config := c.commonTLSConfig(c.internalRPC, true)
+	config := c.internalRPCTLSConfig(true)
 	config.InsecureSkipVerify = false
 	return config
 }
