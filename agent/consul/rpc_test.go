@@ -1455,7 +1455,7 @@ func TestRPC_AuthorizeRaftRPC(t *testing.T) {
 	}
 
 	useNativeTLS := func(t *testing.T, c *tlsutil.Configurator) net.Conn {
-		wrapper := c.OutgoingALPNRPCWrapper()
+		wrapper := c.OutgoingALPNInternalRPCWrapper()
 		dialer := &net.Dialer{Timeout: 100 * time.Millisecond}
 
 		rawConn, err := dialer.Dial("tcp", srv.Listener.Addr().String())

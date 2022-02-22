@@ -308,7 +308,7 @@ func (p *ConnPool) DialTimeout(
 			dc,
 			nodeName,
 			p.SrcAddr,
-			p.TLSConfigurator.OutgoingALPNRPCWrapper(),
+			p.TLSConfigurator.OutgoingALPNInternalRPCWrapper(),
 			nextProto,
 			p.Server,
 			p.GatewayResolver,

@@ -238,7 +238,7 @@ func TestConfigurator_outgoingWrapperALPN_OK(t *testing.T) {
 
 	c, err := NewConfigurator(config, nil)
 	require.NoError(t, err)
-	wrap := c.OutgoingALPNRPCWrapper()
+	wrap := c.OutgoingALPNInternalRPCWrapper()
 	require.NotNil(t, wrap)
 
 	tlsClient, err := wrap("dc1", "bob", "foo", client)
@@ -289,7 +289,7 @@ func TestConfigurator_outgoingWrapperALPN_serverHasNoNodeNameInSAN(t *testing.T)
 
 	c, err := NewConfigurator(config, nil)
 	require.NoError(t, err)
-	wrap := c.OutgoingALPNRPCWrapper()
+	wrap := c.OutgoingALPNInternalRPCWrapper()
 	require.NotNil(t, wrap)
 
 	_, err = wrap("dc1", "bob", "foo", client)
@@ -324,7 +324,7 @@ func TestConfigurator_outgoingWrapperALPN_BadDC(t *testing.T) {
 
 	c, err := NewConfigurator(config, nil)
 	require.NoError(t, err)
-	wrap := c.OutgoingALPNRPCWrapper()
+	wrap := c.OutgoingALPNInternalRPCWrapper()
 
 	_, err = wrap("dc2", "bob", "foo", client)
 	require.Error(t, err)
@@ -356,7 +356,7 @@ func TestConfigurator_outgoingWrapperALPN_BadCert(t *testing.T) {
 
 	c, err := NewConfigurator(config, nil)
 	require.NoError(t, err)
-	wrap := c.OutgoingALPNRPCWrapper()
+	wrap := c.OutgoingALPNInternalRPCWrapper()
 
 	_, err = wrap("dc1", "bob", "foo", client)
 	require.Error(t, err)

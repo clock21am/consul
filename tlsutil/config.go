@@ -878,9 +878,9 @@ func (c *Configurator) UseTLS(dc string) bool {
 	return c.outgoingRPCTLSEnabled() && c.getAreaForPeerDatacenterUseTLS(dc)
 }
 
-// OutgoingALPNRPCWrapper wraps the result of outgoingALPNRPCConfig in an
+// OutgoingALPNInternalRPCWrapper wraps the result of outgoingALPNRPCConfig in an
 // ALPNWrapper. It configures all of the negotiation plumbing.
-func (c *Configurator) OutgoingALPNRPCWrapper() ALPNWrapper {
+func (c *Configurator) OutgoingALPNInternalRPCWrapper() ALPNWrapper {
 	c.log("OutgoingALPNRPCWrapper")
 	if !c.InternalRPCMutualTLSCapable() {
 		return nil

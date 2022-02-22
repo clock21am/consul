@@ -118,7 +118,7 @@ func NewBaseDeps(configLoader ConfigLoader, logOut io.Writer) (BaseDeps, error) 
 		Servers:               builder,
 		SrcAddr:               d.ConnPool.SrcAddr,
 		TLSWrapper:            grpc.TLSWrapper(d.TLSConfigurator.OutgoingInternalRPCWrapper()),
-		ALPNWrapper:           grpc.ALPNWrapper(d.TLSConfigurator.OutgoingALPNRPCWrapper()),
+		ALPNWrapper:           grpc.ALPNWrapper(d.TLSConfigurator.OutgoingALPNInternalRPCWrapper()),
 		UseTLSForDC:           d.TLSConfigurator.UseTLS,
 		DialingFromServer:     cfg.ServerMode,
 		DialingFromDatacenter: cfg.Datacenter,

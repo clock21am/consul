@@ -242,7 +242,7 @@ func TestNewDialer_IntegrationWithTLSEnabledHandler_viaMeshGateway(t *testing.T)
 	pool := NewClientConnPool(ClientConnPoolConfig{
 		Servers:               res,
 		TLSWrapper:            TLSWrapper(clientTLSConf.OutgoingInternalRPCWrapper()),
-		ALPNWrapper:           ALPNWrapper(clientTLSConf.OutgoingALPNRPCWrapper()),
+		ALPNWrapper:           ALPNWrapper(clientTLSConf.OutgoingALPNInternalRPCWrapper()),
 		UseTLSForDC:           tlsConf.UseTLS,
 		DialingFromServer:     true,
 		DialingFromDatacenter: "dc2",

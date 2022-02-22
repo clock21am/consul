@@ -143,7 +143,7 @@ func (t *Transport) dial(dc, nodeName, nextProto string) (net.Conn, error) {
 		dc,
 		nodeName,
 		nil, // TODO(rb): thread source address through here?
-		t.tlsConfigurator.OutgoingALPNRPCWrapper(),
+		t.tlsConfigurator.OutgoingALPNInternalRPCWrapper(),
 		nextProto,
 		true,
 		t.gwResolver,
