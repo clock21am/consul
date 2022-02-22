@@ -281,69 +281,63 @@ func (c *Configurator) Update(config Config) error {
 
 	// Validate config for all listeners up front, before applying anything, so
 	// that this method is atomic.
-	grpcCert, grpcPool, grpcPems, err := validateAndLoadListenerConfig(config.GRPC)
+	//
+	// TODO: test cases for everything.
+	grpc, err := validateAndLoadListenerConfig(config.GRPC)
 	if err != nil {
 		return err
 	}
 
-	httpsCert, httpsPool, httpsPems, err := validateAndLoadListenerConfig(config.HTTPS)
+	https, err := validateAndLoadListenerConfig(config.HTTPS)
 	if err != nil {
 		return err
 	}
 
-	internalCert, internalManualPool, internalPems, err := validateAndLoadListenerConfig(config.InternalRPC.ListenerConfig)
+	internalCommon, err := validateAndLoadListenerConfig(config.InternalRPC.ListenerConfig)
 	if err != nil {
 		return err
+	}
+	internal := internalRPCConfig{
+		listenerConfig: *internalCommon,
+		base:           config.InternalRPC,
+		manualCAPool:   internalCommon.caPool,
 	}
 
 	// Build a combined CA pool with the additional certificates provided by
 	// auto-encrypt/auto-config.
-	internalPool, err := newX509CertPool(internalPems, c.internalRPC.autoTLS.extraCAPems, c.internalRPC.autoTLS.connectCAPems)
+	internal.caPool, err = newX509CertPool(internalCommon.caPems, c.internalRPC.autoTLS.extraCAPems, c.internalRPC.autoTLS.connectCAPems)
 	if err != nil {
 		return err
 	}
-	if err := validateInternalRPCListenerConfig(config, internalCert, internalPool); err != nil {
+	if err := validateInternalRPCListenerConfig(config, internalCommon.cert, internal.caPool); err != nil {
 		return err
 	}
 
 	c.base = &config
-
-	c.grpc.cert = grpcCert
-	c.grpc.caPool = grpcPool
-	c.grpc.caPems = grpcPems
-	c.grpc.base = config.GRPC
-
-	c.https.cert = httpsCert
-	c.https.caPool = httpsPool
-	c.https.caPems = httpsPems
-	c.https.base = config.HTTPS
-
-	c.internalRPC.cert = internalCert
-	c.internalRPC.caPool = internalPool
-	c.internalRPC.caPems = internalPems
-	c.internalRPC.base = config.InternalRPC
-	c.internalRPC.manualCAPool = internalManualPool
+	c.grpc = *grpc
+	c.https = *https
+	c.internalRPC = internal
 
 	atomic.AddUint64(&c.version, 1)
 	c.log("Update")
 	return nil
 }
 
-func validateAndLoadListenerConfig(lc ListenerConfig) (*tls.Certificate, *x509.CertPool, []string, error) {
+func validateAndLoadListenerConfig(lc ListenerConfig) (*listenerConfig, error) {
 	if lc.TLSMinVersion != "" {
 		if _, ok := tlsLookup[lc.TLSMinVersion]; !ok {
 			versions := strings.Join(tlsVersions(), ", ")
-			return nil, nil, nil, fmt.Errorf("TLSMinVersion: value %s not supported, please specify one of [%s]", lc.TLSMinVersion, versions)
+			return nil, fmt.Errorf("TLSMinVersion: value %s not supported, please specify one of [%s]", lc.TLSMinVersion, versions)
 		}
 	}
 
 	pems, err := LoadCAs(lc.CAFile, lc.CAPath)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 	pool, err := newX509CertPool(pems)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 
 	if lc.VerifyIncoming && pool == nil {
@@ -352,15 +346,20 @@ func validateAndLoadListenerConfig(lc ListenerConfig) (*tls.Certificate, *x509.C
 		// Therefore, even though both of those features can push down extra CA certificates which could be used to
 		// verify incoming connections, we still must consider it an error if none are provided in the initial configuration
 		// as those features cannot be successfully enabled without providing CA certificates to use those features.
-		return nil, nil, nil, fmt.Errorf("VerifyIncoming set but no CA certificates were provided")
+		return nil, fmt.Errorf("VerifyIncoming set but no CA certificates were provided")
 	}
 
 	cert, err := loadKeyPair(lc.CertFile, lc.KeyFile)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, err
 	}
 
-	return cert, pool, pems, nil
+	return &listenerConfig{
+		base:   lc,
+		cert:   cert,
+		caPems: pems,
+		caPool: pool,
+	}, nil
 }
 
 func validateInternalRPCListenerConfig(cfg Config, cert *tls.Certificate, caPool *x509.CertPool) error {
@@ -432,6 +431,8 @@ func (c *Configurator) UpdateAutoTLS(manualCAPems, connectCAPems []string, pub, 
 	if err != nil {
 		return err
 	}
+
+	// TODO: figure out if we need validation here.
 
 	c.internalRPC.autoTLS.extraCAPems = manualCAPems
 	c.internalRPC.autoTLS.connectCAPems = connectCAPems
