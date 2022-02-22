@@ -188,7 +188,7 @@ func (ac *AutoConfig) updateTLSCertificatesInConfig(opts AutoConfigOptions, resp
 
 	// get the non-connect CA certs from the TLS Configurator
 	if ac.tlsConfigurator != nil {
-		resp.ExtraCACertificates = ac.tlsConfigurator.ManualCAPems()
+		resp.ExtraCACertificates = ac.tlsConfigurator.InternalRPCManualCAPems()
 	}
 
 	return nil

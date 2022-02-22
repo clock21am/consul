@@ -47,7 +47,7 @@ func (a *AutoEncrypt) Sign(
 
 	reply.IssuedCert = cert
 	reply.ConnectCARoots = roots
-	reply.ManualCARoots = a.srv.tlsConfigurator.ManualCAPems()
+	reply.ManualCARoots = a.srv.tlsConfigurator.InternalRPCManualCAPems()
 	reply.VerifyServerHostname = a.srv.tlsConfigurator.VerifyServerHostname()
 
 	return nil

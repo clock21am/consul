@@ -233,8 +233,8 @@ func NewConfigurator(config Config, logger hclog.Logger) (*Configurator, error) 
 	return c, nil
 }
 
-// ManualCAPems returns the currently loaded CAs in PEM format.
-func (c *Configurator) ManualCAPems() []string {
+// InternalRPCManualCAPems returns the currently loaded CAs in PEM format.
+func (c *Configurator) InternalRPCManualCAPems() []string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.internalRPC.caPems
