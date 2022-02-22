@@ -527,8 +527,7 @@ func TestConfigurator_NewConfigurator(t *testing.T) {
 	require.Nil(t, c)
 }
 
-// TODO: This is where we do the validation.
-func TestConfigurator_ErrorPropagation(t *testing.T) {
+func TestConfigurator_Validation(t *testing.T) {
 	const (
 		caFile   = "../test/ca/root.cer"
 		caPath   = "../test/ca_path"
@@ -1174,6 +1173,29 @@ func TestConfigurator_IncomingHTTPSConfig(t *testing.T) {
 		assertDeepEqual(t, expected, cfg, cmpTLSConfig, cmpClientFunc)
 	})
 
+}
+
+func TestConfigurator_IncomingExternalGRPCConfig(t *testing.T) {
+	c, err := NewConfigurator(Config{
+		GRPC: ListenerConfig{
+			VerifyIncoming: true,
+			CAFile:         "../test/ca/root.cer",
+			CertFile:       "../test/key/ourdomain.cer",
+			KeyFile:        "../test/key/ourdomain.key",
+		},
+	}, nil)
+	require.NoError(t, err)
+	tlsConf := c.IncomingExternalGRPCConfig()
+	require.Equal(t, tls.RequireAndVerifyClientCert, tlsConf.ClientAuth)
+	require.Empty(t, tlsConf.NextProtos)
+	require.Empty(t, tlsConf.ServerName)
+
+	require.NotNil(t, tlsConf.GetConfigForClient)
+	tlsConf, err = tlsConf.GetConfigForClient(nil)
+	require.NoError(t, err)
+	require.Equal(t, tls.RequireAndVerifyClientCert, tlsConf.ClientAuth)
+	require.Empty(t, tlsConf.NextProtos)
+	require.Empty(t, tlsConf.ServerName)
 }
 
 var cmpTLSConfig = cmp.Options{
