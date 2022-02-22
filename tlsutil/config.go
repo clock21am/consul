@@ -44,41 +44,12 @@ var tlsLookup = map[string]uint16{
 	"tls13": tls.VersionTLS13,
 }
 
-// Config used to create tls.Config
-type Config struct {
+type ListenerConfig struct {
 	// VerifyIncoming is used to verify the authenticity of incoming
 	// connections.  This means that TCP requests are forbidden, only
 	// allowing for TLS. TLS connections must match a provided certificate
 	// authority. This can be used to force client auth.
 	VerifyIncoming bool
-
-	// VerifyIncomingRPC is used to verify the authenticity of incoming RPC
-	// connections.  This means that TCP requests are forbidden, only
-	// allowing for TLS. TLS connections must match a provided certificate
-	// authority. This can be used to force client auth.
-	VerifyIncomingRPC bool
-
-	// VerifyIncomingHTTPS is used to verify the authenticity of incoming
-	// HTTPS connections.  This means that TCP requests are forbidden, only
-	// allowing for TLS. TLS connections must match a provided certificate
-	// authority. This can be used to force client auth.
-	VerifyIncomingHTTPS bool
-
-	// VerifyOutgoing is used to verify the authenticity of outgoing
-	// connections.  This means that TLS requests are used, and TCP
-	// requests are not made. TLS connections must match a provided
-	// certificate authority. This is used to verify authenticity of server
-	// nodes.
-	VerifyOutgoing bool
-
-	// VerifyServerHostname is used to enable hostname verification of
-	// servers. This ensures that the certificate presented is valid for
-	// server.<datacenter>.<domain>.  This prevents a compromised client
-	// from being restarted as a server, and then intercepting request
-	// traffic as well as being added as a raft peer. This should be
-	// enabled by default with VerifyOutgoing, but for legacy reasons we
-	// cannot break existing clients.
-	VerifyServerHostname bool
 
 	// CAFile is a path to a certificate authority file. This is used with
 	// VerifyIncoming or VerifyOutgoing to verify the TLS connection.
@@ -97,16 +68,6 @@ type Config struct {
 	// connections.  Must be provided to serve TLS connections.
 	KeyFile string
 
-	// Node name is the name we use to advertise. Defaults to hostname.
-	NodeName string
-
-	// ServerName is used with the TLS certificate to ensure the name we
-	// provide matches the certificate
-	ServerName string
-
-	// Domain is the Consul TLD being used. Defaults to "consul."
-	Domain string
-
 	// TLSMinVersion is the minimum accepted TLS version that can be used.
 	TLSMinVersion string
 
@@ -116,6 +77,48 @@ type Config struct {
 	// PreferServerCipherSuites specifies whether to prefer the server's
 	// ciphersuite over the client ciphersuites.
 	PreferServerCipherSuites bool
+}
+
+type InternalRPCListenerConfig struct {
+	ListenerConfig
+
+	// VerifyOutgoing is used to verify the authenticity of outgoing
+	// connections.  This means that TLS requests are used, and TCP
+	// requests are not made. TLS connections must match a provided
+	// certificate authority. This is used to verify authenticity of server
+	// nodes.
+	VerifyOutgoing bool
+
+	// VerifyServerHostname is used to enable hostname verification of
+	// servers. This ensures that the certificate presented is valid for
+	// server.<datacenter>.<domain>.  This prevents a compromised client
+	// from being restarted as a server, and then intercepting request
+	// traffic as well as being added as a raft peer. This should be
+	// enabled by default with VerifyOutgoing, but for legacy reasons we
+	// cannot break existing clients.
+	VerifyServerHostname bool
+}
+
+// Config used to create tls.Config
+type Config struct {
+	// InternalRPC is used to configure the internal multiplexed RPC listener.
+	InternalRPC InternalRPCListenerConfig
+
+	// GRPC is used to configure the external (e.g. xDS) gRPC listener.
+	GRPC ListenerConfig
+
+	// HTTPS is used to configure the external HTTPS listener.
+	HTTPS ListenerConfig
+
+	// Node name is the name we use to advertise. Defaults to hostname.
+	NodeName string
+
+	// ServerName is used with the TLS certificate to ensure the name we
+	// provide matches the certificate
+	ServerName string
+
+	// Domain is the Consul TLD being used. Defaults to "consul."
+	Domain string
 
 	// EnableAgentTLSForChecks is used to apply the agent's TLS settings in
 	// order to configure the HTTP client used for health checks. Enabling
@@ -163,9 +166,7 @@ type autoTLS struct {
 type listenerConfig struct {
 	tlsParams
 
-	verifyIncoming       bool
-	verifyOutgoing       bool
-	verifyServerHostname bool
+	verifyIncoming bool
 
 	cert   *tls.Certificate
 	caPems []string
@@ -180,6 +181,9 @@ func (ls listenerConfig) getVerifyServerHostname() bool       { return false }
 
 type internalRPCConfig struct {
 	listenerConfig
+
+	verifyOutgoing       bool
+	verifyServerHostname bool
 
 	// caPool containing only the caPems. This CertPool should be used instead of
 	// the caPool when only the Agent TLS CA is allowed.
@@ -282,44 +286,81 @@ func (c *Configurator) Update(config Config) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	cert, err := loadKeyPair(config.CertFile, config.KeyFile)
-	if err != nil {
-		return err
+	loadKeyMaterial := func(lc ListenerConfig) (*tls.Certificate, *x509.CertPool, []string, error) {
+		cert, err := loadKeyPair(lc.CertFile, lc.KeyFile)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		pems, err := LoadCAs(lc.CAFile, lc.CAPath)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		pool, err := newX509CertPool(pems)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		return cert, pool, pems, nil
 	}
-	pems, err := LoadCAs(config.CAFile, config.CAPath)
-	if err != nil {
-		return err
+
+	{
+		cert, pool, pems, err := loadKeyMaterial(config.GRPC)
+		if err != nil {
+			return err
+		}
+		c.grpc.cert = cert
+		c.grpc.caPool = pool
+		c.grpc.caPems = pems
+
+		c.grpc.tlsParams.minVersion = config.GRPC.TLSMinVersion
+		c.grpc.tlsParams.cipherSuites = config.GRPC.CipherSuites
+		c.grpc.tlsParams.preferServerCipherSuites = config.GRPC.PreferServerCipherSuites
+		c.grpc.verifyIncoming = config.GRPC.VerifyIncoming
 	}
-	caPool, err := newX509CertPool(pems, c.internalRPC.autoTLS.extraCAPems, c.internalRPC.autoTLS.connectCAPems)
-	if err != nil {
-		return err
+
+	{
+		cert, pool, pems, err := loadKeyMaterial(config.HTTPS)
+		if err != nil {
+			return err
+		}
+		c.https.cert = cert
+		c.https.caPool = pool
+		c.https.caPems = pems
+
+		c.https.tlsParams.minVersion = config.HTTPS.TLSMinVersion
+		c.https.tlsParams.cipherSuites = config.HTTPS.CipherSuites
+		c.https.tlsParams.preferServerCipherSuites = config.HTTPS.PreferServerCipherSuites
+		c.https.verifyIncoming = config.HTTPS.VerifyIncoming
 	}
-	if err = validateConfig(config, caPool, cert); err != nil {
-		return err
-	}
-	manualCAPool, err := newX509CertPool(pems)
-	if err != nil {
-		return err
+
+	{
+		cert, pool, pems, err := loadKeyMaterial(config.InternalRPC.ListenerConfig)
+		if err != nil {
+			return err
+		}
+		c.internalRPC.cert = cert
+		c.internalRPC.manualCAPool = pool
+		c.internalRPC.caPems = pems
+
+		pool, err = newX509CertPool(pems, c.internalRPC.autoTLS.extraCAPems, c.internalRPC.autoTLS.connectCAPems)
+		if err != nil {
+			return err
+		}
+		c.internalRPC.caPool = pool
+
+		c.internalRPC.tlsParams.minVersion = config.InternalRPC.TLSMinVersion
+		c.internalRPC.tlsParams.cipherSuites = config.InternalRPC.CipherSuites
+		c.internalRPC.tlsParams.preferServerCipherSuites = config.InternalRPC.PreferServerCipherSuites
+		c.internalRPC.verifyIncoming = config.InternalRPC.VerifyIncoming
+		c.internalRPC.verifyOutgoing = config.InternalRPC.VerifyOutgoing
+		c.internalRPC.verifyServerHostname = config.InternalRPC.VerifyServerHostname
+
+		// TODO: Validate gRPC and https configuration.
+		if err = validateConfig(config, pool, cert); err != nil {
+			return err
+		}
 	}
 
 	c.base = &config
-
-	c.internalRPC.tlsParams.minVersion = c.base.TLSMinVersion
-	c.internalRPC.tlsParams.cipherSuites = c.base.CipherSuites
-	c.internalRPC.tlsParams.preferServerCipherSuites = c.base.PreferServerCipherSuites
-	c.internalRPC.verifyIncoming = c.base.VerifyIncomingRPC || c.base.VerifyIncoming
-	c.internalRPC.verifyOutgoing = c.base.VerifyOutgoing
-	c.internalRPC.verifyServerHostname = c.base.VerifyServerHostname
-
-	c.internalRPC.cert = cert
-	c.internalRPC.caPems = pems
-	c.internalRPC.manualCAPool = manualCAPool
-	c.internalRPC.caPool = caPool
-
-	c.grpc = c.internalRPC.listenerConfig
-
-	c.https = c.internalRPC.listenerConfig
-	c.https.verifyIncoming = c.base.VerifyIncomingHTTPS || c.base.VerifyIncoming
 
 	atomic.AddUint64(&c.version, 1)
 	c.log("Update")
@@ -439,15 +480,15 @@ func newX509CertPool(groups ...[]string) (*x509.CertPool, error) {
 // or cert.
 func validateConfig(config Config, pool *x509.CertPool, cert *tls.Certificate) error {
 	// Check if a minimum TLS version was set
-	if config.TLSMinVersion != "" {
-		if _, ok := tlsLookup[config.TLSMinVersion]; !ok {
+	if config.InternalRPC.TLSMinVersion != "" {
+		if _, ok := tlsLookup[config.InternalRPC.TLSMinVersion]; !ok {
 			versions := strings.Join(tlsVersions(), ", ")
-			return fmt.Errorf("TLSMinVersion: value %s not supported, please specify one of [%s]", config.TLSMinVersion, versions)
+			return fmt.Errorf("TLSMinVersion: value %s not supported, please specify one of [%s]", config.InternalRPC.TLSMinVersion, versions)
 		}
 	}
 
 	// Ensure we have a CA if VerifyOutgoing is set
-	if config.VerifyOutgoing && pool == nil {
+	if config.InternalRPC.VerifyOutgoing && pool == nil {
 		return fmt.Errorf("VerifyOutgoing set, and no CA certificate provided!")
 	}
 
@@ -472,7 +513,7 @@ func validateConfig(config Config, pool *x509.CertPool, cert *tls.Certificate) e
 }
 
 func (c Config) anyVerifyIncoming() bool {
-	return c.VerifyIncoming || c.VerifyIncomingRPC || c.VerifyIncomingHTTPS
+	return c.InternalRPC.VerifyIncoming || c.GRPC.VerifyIncoming || c.HTTPS.VerifyIncoming
 }
 
 func loadKeyPair(certFile, keyFile string) (*tls.Certificate, error) {
@@ -612,7 +653,7 @@ func (c *Configurator) ExternalGRPCCert() *tls.Certificate {
 func (c *Configurator) VerifyIncomingRPC() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.base.VerifyIncoming || c.internalRPC.verifyIncoming
+	return c.internalRPC.verifyIncoming
 }
 
 // This function acquires a read lock because it reads from the config.
