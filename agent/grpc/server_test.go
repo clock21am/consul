@@ -14,11 +14,12 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
+	"github.com/hashicorp/go-hclog"
+
 	"github.com/hashicorp/consul/agent/grpc/internal/testservice"
 	"github.com/hashicorp/consul/agent/metadata"
 	"github.com/hashicorp/consul/agent/pool"
 	"github.com/hashicorp/consul/tlsutil"
-	"github.com/hashicorp/go-hclog"
 )
 
 type testServer struct {
@@ -161,7 +162,7 @@ func (f *fakeRPCListener) listen(listener net.Listener) error {
 }
 
 func (f *fakeRPCListener) handleConn(conn net.Conn) {
-	if f.tlsConf != nil && f.tlsConf.MutualTLSCapable() {
+	if f.tlsConf != nil && f.tlsConf.InternalRPCMutualTLSCapable() {
 		// See if actually this is native TLS multiplexed onto the old
 		// "type-byte" system.
 

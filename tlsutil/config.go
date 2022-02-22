@@ -660,11 +660,9 @@ func (c *Configurator) outgoingRPCTLSEnabled() bool {
 	return c.base.AutoTLS || c.internalRPC.base.VerifyOutgoing
 }
 
-// MutualTLSCapable returns true if Configurator has a CA and a local TLS
+// InternalRPCMutualTLSCapable returns true if Configurator has a CA and a local TLS
 // certificate configured.
-//
-// TODO: Rename this.
-func (c *Configurator) MutualTLSCapable() bool {
+func (c *Configurator) InternalRPCMutualTLSCapable() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 	return c.internalRPC.caPool != nil && (c.internalRPC.autoTLS.cert != nil || c.internalRPC.cert != nil)
@@ -849,7 +847,7 @@ func (c *Configurator) OutgoingInternalRPCConfig() *tls.Config {
 // ALPN variation.
 func (c *Configurator) outgoingALPNRPCConfig() *tls.Config {
 	c.log("outgoingALPNRPCConfig")
-	if !c.MutualTLSCapable() {
+	if !c.InternalRPCMutualTLSCapable() {
 		return nil // ultimately this will hard-fail as TLS is required
 	}
 
@@ -884,7 +882,7 @@ func (c *Configurator) UseTLS(dc string) bool {
 // ALPNWrapper. It configures all of the negotiation plumbing.
 func (c *Configurator) OutgoingALPNRPCWrapper() ALPNWrapper {
 	c.log("OutgoingALPNRPCWrapper")
-	if !c.MutualTLSCapable() {
+	if !c.InternalRPCMutualTLSCapable() {
 		return nil
 	}
 

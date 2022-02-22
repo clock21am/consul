@@ -980,7 +980,7 @@ func TestConfigurator_OutgoingRPCTLSDisabled(t *testing.T) {
 	}
 }
 
-func TestConfigurator_MutualTLSCapable(t *testing.T) {
+func TestConfigurator_InternalRPCMutualTLSCapable(t *testing.T) {
 	// if this test is failing because of expired certificates
 	// use the procedure in test/CA-GENERATION.md
 	t.Run("no ca", func(t *testing.T) {
@@ -990,7 +990,7 @@ func TestConfigurator_MutualTLSCapable(t *testing.T) {
 		c, err := NewConfigurator(config, nil)
 		require.NoError(t, err)
 
-		require.False(t, c.MutualTLSCapable())
+		require.False(t, c.InternalRPCMutualTLSCapable())
 	})
 
 	t.Run("ca and no keys", func(t *testing.T) {
@@ -1005,7 +1005,7 @@ func TestConfigurator_MutualTLSCapable(t *testing.T) {
 		c, err := NewConfigurator(config, nil)
 		require.NoError(t, err)
 
-		require.False(t, c.MutualTLSCapable())
+		require.False(t, c.InternalRPCMutualTLSCapable())
 	})
 
 	t.Run("ca and manual key", func(t *testing.T) {
@@ -1022,7 +1022,7 @@ func TestConfigurator_MutualTLSCapable(t *testing.T) {
 		c, err := NewConfigurator(config, nil)
 		require.NoError(t, err)
 
-		require.True(t, c.MutualTLSCapable())
+		require.True(t, c.InternalRPCMutualTLSCapable())
 	})
 
 	loadFile := func(t *testing.T, path string) string {
@@ -1041,7 +1041,7 @@ func TestConfigurator_MutualTLSCapable(t *testing.T) {
 		caPEM := loadFile(t, "../test/hostname/CertAuth.crt")
 		require.NoError(t, c.UpdateAutoTLSCA([]string{caPEM}))
 
-		require.False(t, c.MutualTLSCapable())
+		require.False(t, c.InternalRPCMutualTLSCapable())
 	})
 
 	t.Run("autoencrypt ca and autoencrypt key", func(t *testing.T) {
@@ -1057,7 +1057,7 @@ func TestConfigurator_MutualTLSCapable(t *testing.T) {
 		require.NoError(t, c.UpdateAutoTLSCA([]string{caPEM}))
 		require.NoError(t, c.UpdateAutoTLSCert(certPEM, keyPEM))
 
-		require.True(t, c.MutualTLSCapable())
+		require.True(t, c.InternalRPCMutualTLSCapable())
 	})
 }
 

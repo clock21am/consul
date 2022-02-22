@@ -151,7 +151,7 @@ func (s *Server) handleConn(conn net.Conn, isTLS bool) {
 		conn.SetReadDeadline(time.Now().Add(s.config.RPCHandshakeTimeout))
 	}
 
-	if !isTLS && s.tlsConfigurator.MutualTLSCapable() {
+	if !isTLS && s.tlsConfigurator.InternalRPCMutualTLSCapable() {
 		// See if actually this is native TLS multiplexed onto the old
 		// "type-byte" system.
 
