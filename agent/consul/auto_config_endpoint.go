@@ -287,8 +287,9 @@ func (ac *AutoConfig) updateTLSSettingsInConfig(_ AutoConfigOptions, resp *pbaut
 		resp.Config.TLS = &pbconfig.TLS{}
 	}
 
+	// TODO: Check this is correct/still makes sense as an interface.
 	resp.Config.TLS.VerifyServerHostname = ac.tlsConfigurator.VerifyServerHostname()
-	base := ac.tlsConfigurator.Base()
+	base := ac.tlsConfigurator.Base().InternalRPC
 	resp.Config.TLS.VerifyOutgoing = base.VerifyOutgoing
 	resp.Config.TLS.MinVersion = base.TLSMinVersion
 	resp.Config.TLS.PreferServerCipherSuites = base.PreferServerCipherSuites

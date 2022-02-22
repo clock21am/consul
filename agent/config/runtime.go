@@ -1711,23 +1711,45 @@ func (c *RuntimeConfig) Sanitized() map[string]interface{} {
 
 func (c *RuntimeConfig) ToTLSUtilConfig() tlsutil.Config {
 	return tlsutil.Config{
-		VerifyIncoming:           c.VerifyIncoming,
-		VerifyIncomingRPC:        c.VerifyIncomingRPC,
-		VerifyIncomingHTTPS:      c.VerifyIncomingHTTPS,
-		VerifyOutgoing:           c.VerifyOutgoing,
-		VerifyServerHostname:     c.VerifyServerHostname,
-		CAFile:                   c.CAFile,
-		CAPath:                   c.CAPath,
-		CertFile:                 c.CertFile,
-		KeyFile:                  c.KeyFile,
-		NodeName:                 c.NodeName,
-		Domain:                   c.DNSDomain,
-		ServerName:               c.ServerName,
-		TLSMinVersion:            c.TLSMinVersion,
-		CipherSuites:             c.TLSCipherSuites,
-		PreferServerCipherSuites: c.TLSPreferServerCipherSuites,
-		EnableAgentTLSForChecks:  c.EnableAgentTLSForChecks,
-		AutoTLS:                  c.AutoEncryptTLS || c.AutoConfig.Enabled,
+		InternalRPC: tlsutil.InternalRPCListenerConfig{
+			ListenerConfig: tlsutil.ListenerConfig{
+				VerifyIncoming:           c.VerifyIncoming || c.VerifyIncomingRPC,
+				CAFile:                   c.CAFile,
+				CAPath:                   c.CAPath,
+				CertFile:                 c.CertFile,
+				KeyFile:                  c.KeyFile,
+				TLSMinVersion:            c.TLSMinVersion,
+				CipherSuites:             c.TLSCipherSuites,
+				PreferServerCipherSuites: c.TLSPreferServerCipherSuites,
+			},
+			VerifyOutgoing:       c.VerifyOutgoing,
+			VerifyServerHostname: c.VerifyServerHostname,
+		},
+		HTTPS: tlsutil.ListenerConfig{
+			VerifyIncoming:           c.VerifyIncoming || c.VerifyIncomingHTTPS,
+			CAFile:                   c.CAFile,
+			CAPath:                   c.CAPath,
+			CertFile:                 c.CertFile,
+			KeyFile:                  c.KeyFile,
+			TLSMinVersion:            c.TLSMinVersion,
+			CipherSuites:             c.TLSCipherSuites,
+			PreferServerCipherSuites: c.TLSPreferServerCipherSuites,
+		},
+		GRPC: tlsutil.ListenerConfig{
+			VerifyIncoming:           c.VerifyIncoming, // TODO: Check whether this previously honored VerifyIncomingRPC.
+			CAFile:                   c.CAFile,
+			CAPath:                   c.CAPath,
+			CertFile:                 c.CertFile,
+			KeyFile:                  c.KeyFile,
+			TLSMinVersion:            c.TLSMinVersion,
+			CipherSuites:             c.TLSCipherSuites,
+			PreferServerCipherSuites: c.TLSPreferServerCipherSuites,
+		},
+		NodeName:                c.NodeName,
+		Domain:                  c.DNSDomain,
+		ServerName:              c.ServerName,
+		EnableAgentTLSForChecks: c.EnableAgentTLSForChecks,
+		AutoTLS:                 c.AutoEncryptTLS || c.AutoConfig.Enabled,
 	}
 }
 
