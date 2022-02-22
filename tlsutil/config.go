@@ -890,8 +890,6 @@ func (c *Configurator) OutgoingALPNInternalRPCWrapper() ALPNWrapper {
 }
 
 // AutoEncryptCert returns the TLS certificate received from auto-encrypt.
-//
-// TODO: find out who uses this.
 func (c *Configurator) AutoEncryptCert() *x509.Certificate {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
@@ -1015,7 +1013,7 @@ type TLSConn interface {
 	ConnectionState() tls.ConnectionState
 }
 
-// AuthorizeServerConn is used to validate that the connection is being established
+// AuthorizeInternalRPCServerConn is used to validate that the connection is being established
 // by a Consul server in the same datacenter.
 //
 // The identity of the connection is checked by verifying that the certificate
@@ -1024,7 +1022,7 @@ type TLSConn interface {
 //
 // Note this check is only performed if VerifyServerHostname and VerifyIncomingRPC
 // are both enabled, otherwise it does no authorization.
-func (c *Configurator) AuthorizeServerConn(dc string, conn TLSConn) error {
+func (c *Configurator) AuthorizeInternalRPCServerConn(dc string, conn TLSConn) error {
 	if !c.VerifyIncomingInternalRPC() || !c.VerifyServerHostname() {
 		return nil
 	}
@@ -1058,7 +1056,7 @@ func (c *Configurator) AuthorizeServerConn(dc string, conn TLSConn) error {
 	if errs == nil {
 		errs = fmt.Errorf("no verified chains")
 	}
-	return fmt.Errorf("AuthorizeServerConn failed certificate validation for certificate with a SAN.DNSName of %v: %w", expected, errs)
+	return fmt.Errorf("AuthorizeInternalRPCServerConn failed certificate validation for certificate with a SAN.DNSName of %v: %w", expected, errs)
 
 }
 

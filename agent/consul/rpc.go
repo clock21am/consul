@@ -470,7 +470,7 @@ func (s *Server) handleSnapshotConn(conn net.Conn) {
 
 func (s *Server) handleRaftRPC(conn net.Conn) {
 	if tlsConn, ok := conn.(*tls.Conn); ok {
-		err := s.tlsConfigurator.AuthorizeServerConn(s.config.Datacenter, tlsConn)
+		err := s.tlsConfigurator.AuthorizeInternalRPCServerConn(s.config.Datacenter, tlsConn)
 		if err != nil {
 			s.rpcLogger().Warn(err.Error(), "from", conn.RemoteAddr(), "operation", "raft RPC")
 			conn.Close()

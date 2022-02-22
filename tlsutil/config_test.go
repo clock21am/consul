@@ -1574,7 +1574,7 @@ func TestConfigurator_AutoEncryptCert(t *testing.T) {
 	require.Equal(t, int64(4679716209), c.AutoEncryptCert().NotAfter.Unix())
 }
 
-func TestConfigurator_AuthorizeServerConn(t *testing.T) {
+func TestConfigurator_AuthorizeInternalRPCServerConn(t *testing.T) {
 	caPEM, caPK, err := GenerateCA(CAOpts{Days: 5, Domain: "consul"})
 	require.NoError(t, err)
 
@@ -1635,7 +1635,7 @@ func TestConfigurator_AuthorizeServerConn(t *testing.T) {
 				PeerCertificates: certChain(t, pem, caPEM),
 			},
 		}
-		err = c.AuthorizeServerConn("dc1", s)
+		err = c.AuthorizeInternalRPCServerConn("dc1", s)
 		testutil.RequireErrorContains(t, err, "is valid for this-name-is-wrong, localhost, not server.dc1.consul")
 	})
 
@@ -1667,7 +1667,7 @@ func TestConfigurator_AuthorizeServerConn(t *testing.T) {
 				PeerCertificates: certChain(t, pem, caPEM),
 			},
 		}
-		err = c.AuthorizeServerConn("dc1", s)
+		err = c.AuthorizeInternalRPCServerConn("dc1", s)
 		testutil.RequireErrorContains(t, err, "signed by unknown authority")
 	})
 
@@ -1691,7 +1691,7 @@ func TestConfigurator_AuthorizeServerConn(t *testing.T) {
 				PeerCertificates: certChain(t, pem, caPEM),
 			},
 		}
-		err = c.AuthorizeServerConn("dc1", s)
+		err = c.AuthorizeInternalRPCServerConn("dc1", s)
 		testutil.RequireErrorContains(t, err, "certificate specifies an incompatible key usage")
 	})
 
@@ -1710,7 +1710,7 @@ func TestConfigurator_AuthorizeServerConn(t *testing.T) {
 		require.NoError(t, err)
 
 		s := fakeTLSConn{}
-		err = c.AuthorizeServerConn("dc1", s)
+		err = c.AuthorizeInternalRPCServerConn("dc1", s)
 		require.NoError(t, err)
 	})
 
