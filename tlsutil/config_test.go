@@ -810,7 +810,7 @@ func TestConfigurator_OutgoingRPCTLSDisabled(t *testing.T) {
 	for i, v := range variants {
 		info := fmt.Sprintf("case %d", i)
 		c.internalRPC.caPool = v.pool
-		c.internalRPC.verifyOutgoing = v.verify
+		c.internalRPC.base.VerifyOutgoing = v.verify
 		c.base.AutoTLS = v.autoEncryptTLS
 		require.Equal(t, v.expected, c.outgoingRPCTLSEnabled(), info)
 	}
@@ -910,7 +910,7 @@ func TestConfigurator_UpdateAutoTLSCA_DoesNotPanic(t *testing.T) {
 
 func TestConfigurator_VerifyIncomingRPC(t *testing.T) {
 	c := Configurator{base: &Config{}}
-	c.internalRPC.verifyIncoming = true
+	c.internalRPC.base.VerifyIncoming = true
 	require.True(t, c.VerifyIncomingRPC())
 }
 
@@ -993,7 +993,7 @@ func TestConfigurator_IncomingHTTPSConfig(t *testing.T) {
 
 	t.Run("verify incoming", func(t *testing.T) {
 		c := Configurator{base: &Config{}}
-		c.https.verifyIncoming = true
+		c.https.base.VerifyIncoming = true
 
 		cfg := c.IncomingHTTPSConfig()
 
@@ -1345,7 +1345,7 @@ func TestConfigurator_VerifyOutgoing(t *testing.T) {
 	for i, v := range variants {
 		info := fmt.Sprintf("case %d", i)
 		c.internalRPC.caPool = v.pool
-		c.internalRPC.verifyOutgoing = v.verify
+		c.internalRPC.base.VerifyOutgoing = v.verify
 		c.base.AutoTLS = v.autoEncryptTLS
 		require.Equal(t, v.expected, c.verifyOutgoing(), info)
 	}
@@ -1360,15 +1360,15 @@ func TestConfigurator_VerifyServerHostname(t *testing.T) {
 	c := Configurator{base: &Config{}}
 	require.False(t, c.VerifyServerHostname())
 
-	c.internalRPC.verifyServerHostname = true
+	c.internalRPC.base.VerifyServerHostname = true
 	c.internalRPC.autoTLS.verifyServerHostname = false
 	require.True(t, c.VerifyServerHostname())
 
-	c.internalRPC.verifyServerHostname = false
+	c.internalRPC.base.VerifyServerHostname = false
 	c.internalRPC.autoTLS.verifyServerHostname = true
 	require.True(t, c.VerifyServerHostname())
 
-	c.internalRPC.verifyServerHostname = true
+	c.internalRPC.base.VerifyServerHostname = true
 	c.internalRPC.autoTLS.verifyServerHostname = true
 	require.True(t, c.VerifyServerHostname())
 }
