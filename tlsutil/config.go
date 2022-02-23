@@ -44,6 +44,7 @@ var tlsLookup = map[string]uint16{
 	"tls13": tls.VersionTLS13,
 }
 
+// ListenerConfig contains configuration for a given listener.
 type ListenerConfig struct {
 	// VerifyIncoming is used to verify the authenticity of incoming
 	// connections.  This means that TCP requests are forbidden, only
@@ -79,6 +80,8 @@ type ListenerConfig struct {
 	PreferServerCipherSuites bool
 }
 
+// InternalRPCListenerConfig extends ListenerConfig with settings that are only
+// relevant to the internal RPC listener.
 type InternalRPCListenerConfig struct {
 	ListenerConfig
 
@@ -154,38 +157,31 @@ func SpecificDC(dc string, tlsWrap DCWrapper) Wrapper {
 	}
 }
 
+// listenerConfig contains settings used by all listeners.
+//
+// TODO: better comment. Maybe embed ListenerConfig?
 type listenerConfig struct {
-	cfg    ListenerConfig
-	cert   *tls.Certificate
-	caPems []string
-	caPool *x509.CertPool
-}
+	// cert is the TLS certificate configured manually by the cert_file/key_file
+	// options in the configuration file.
+	cert *tls.Certificate
 
-type internalRPCConfig struct {
-	listenerConfig
+	// manualCAPEMs contains the PEM-encoded CA certificates provided manually by
+	// the ca_file/ca_path options in the configuration file.
+	manualCAPEMs []string
 
-	cfg InternalRPCListenerConfig
-
-	// caPool containing only the caPems. This CertPool should be used instead of
-	// the caPool when only the Agent TLS CA is allowed.
-	//
-	// TODO: expand on this comment.
-	// TODO: Actually, maybe we should layer the auto-config stuff on top rather
-	// than destructively merging it in?
+	// manualCAPool is a pool containing only manualCAPEM, for cases where it is
+	// not appropriate to trust the Connect CA (e.g. when verifying server identity
+	// in AuthorizeInternalRPCServerConn).
 	manualCAPool *x509.CertPool
 
-	// autoTLS stores configuration that is received from the auto-encrypt or
-	// auto-config features.
-	autoTLS struct {
-		extraCAPems          []string
-		connectCAPems        []string
-		cert                 *tls.Certificate
-		verifyServerHostname bool
-	}
+	// combinedCAPool is a pool containing both manualCAPEMs and the certificates
+	// received from auto-config/auto-encrypt.
+	combinedCAPool *x509.CertPool
 }
 
 // Configurator provides tls.Config and net.Dial wrappers to enable TLS for
-// clients and servers, for both HTTPS and RPC requests.
+// clients and servers, for internal RPC, and external gRPC and HTTPS connections.
+//
 // Configurator receives an initial TLS configuration from agent configuration,
 // and receives updates from config reloads, auto-encrypt, and auto-config.
 type Configurator struct {
@@ -203,7 +199,16 @@ type Configurator struct {
 
 	grpc        listenerConfig
 	https       listenerConfig
-	internalRPC internalRPCConfig
+	internalRPC listenerConfig
+
+	// autoTLS stores configuration that is received from the auto-encrypt or
+	// auto-config features.
+	autoTLS struct {
+		extraCAPems          []string
+		connectCAPems        []string
+		cert                 *tls.Certificate
+		verifyServerHostname bool
+	}
 
 	// logger is not protected by a lock. It must never be changed after
 	// Configurator is created.
@@ -230,11 +235,12 @@ func NewConfigurator(config Config, logger hclog.Logger) (*Configurator, error) 
 	return c, nil
 }
 
-// InternalRPCManualCAPems returns the currently loaded CAs in PEM format.
+// InternalRPCManualCAPems returns the currently loaded CAs for the internal RPC
+// listener, in PEM format.
 func (c *Configurator) InternalRPCManualCAPems() []string {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.internalRPC.caPems
+	return c.internalRPC.manualCAPEMs
 }
 
 // Update updates the internal configuration which is used to generate
@@ -244,118 +250,77 @@ func (c *Configurator) Update(config Config) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	grpc, err := loadListenerConfig(config.GRPC)
+	grpc, err := c.loadListenerConfig(config, config.GRPC)
 	if err != nil {
 		return err
 	}
 
-	https, err := loadListenerConfig(config.HTTPS)
+	https, err := c.loadListenerConfig(config, config.HTTPS)
 	if err != nil {
 		return err
 	}
 
-	internalCommon, err := loadListenerConfig(config.InternalRPC.ListenerConfig)
+	internalRPC, err := c.loadListenerConfig(config, config.InternalRPC.ListenerConfig)
 	if err != nil {
 		return err
 	}
-	internal := internalRPCConfig{
-		listenerConfig: *internalCommon,
-		cfg:            config.InternalRPC,
-		manualCAPool:   internalCommon.caPool,
-	}
-
-	// Build a combined CA pool with the additional certificates provided by
-	// auto-encrypt/auto-config.
-	internal.caPool, err = newX509CertPool(internalCommon.caPems, c.internalRPC.autoTLS.extraCAPems, c.internalRPC.autoTLS.connectCAPems)
-	if err != nil {
-		return err
-	}
-
-	// Validate config for all listeners up front, before applying anything, so
-	// that this method is atomic.
-	if err := validateListenerConfig(config, *grpc); err != nil {
-		return err
-	}
-	if err := validateListenerConfig(config, *https); err != nil {
-		return err
-	}
-	if err := validateListenerConfig(config, internal); err != nil {
-		return err
+	// TODO: should we do this validation whenever autoTLS is modified?
+	if config.InternalRPC.VerifyOutgoing && internalRPC.combinedCAPool == nil {
+		return fmt.Errorf("VerifyOutgoing set but no CA certificates were provided")
 	}
 
 	c.base = &config
 	c.grpc = *grpc
 	c.https = *https
-	c.internalRPC = internal
+	c.internalRPC = *internalRPC
 
 	atomic.AddUint64(&c.version, 1)
 	c.log("Update")
 	return nil
 }
 
-func validateListenerConfig(cfg Config, v interface{}) error {
-	var (
-		common      listenerConfig
-		internalRPC *internalRPCConfig
-	)
-	switch lc := v.(type) {
-	case listenerConfig:
-		common = lc
-	case internalRPCConfig:
-		common = lc.listenerConfig
-		internalRPC = &lc
-	}
-
-	if min := common.cfg.TLSMinVersion; min != "" {
+func (c *Configurator) loadListenerConfig(base Config, lc ListenerConfig) (*listenerConfig, error) {
+	if min := lc.TLSMinVersion; min != "" {
 		if _, ok := tlsLookup[min]; !ok {
 			versions := strings.Join(tlsVersions(), ", ")
-			return fmt.Errorf("TLSMinVersion: value %s not supported, please specify one of [%s]", min, versions)
+			return nil, fmt.Errorf("TLSMinVersion: value %s not supported, please specify one of [%s]", min, versions)
 		}
 	}
 
-	if common.cfg.VerifyIncoming {
-		if common.caPool == nil {
-			return fmt.Errorf("VerifyIncoming set but no CA certificates were provided")
-		}
-
-		if common.cert == nil {
-			if internalRPC == nil {
-				return fmt.Errorf("VerifyIncoming requires a Cert and Key pair in the configuration file")
-			}
-
-			// We will use the auto_encrypt/auto_config cert for TLS in the incoming APIs when available. Therefore the check
-			// here will ensure that either we enabled one of those two features or a certificate and key were provided manually
-			if !cfg.AutoTLS {
-				return fmt.Errorf("VerifyIncoming requires either a Cert and Key pair in the configuration file, or auto_encrypt/auto_config be enabled")
-			}
-		}
-	}
-
-	if internalRPC != nil && (internalRPC.cfg.VerifyOutgoing && internalRPC.caPool == nil) {
-		return fmt.Errorf("VerifyOutgoing set but no CA certificates were provided")
-	}
-
-	return nil
-}
-
-func loadListenerConfig(lc ListenerConfig) (*listenerConfig, error) {
-	pems, err := LoadCAs(lc.CAFile, lc.CAPath)
-	if err != nil {
-		return nil, err
-	}
-	pool, err := newX509CertPool(pems)
-	if err != nil {
-		return nil, err
-	}
 	cert, err := loadKeyPair(lc.CertFile, lc.KeyFile)
 	if err != nil {
 		return nil, err
 	}
+	pems, err := LoadCAs(lc.CAFile, lc.CAPath)
+	if err != nil {
+		return nil, err
+	}
+	manualPool, err := newX509CertPool(pems)
+	if err != nil {
+		return nil, err
+	}
+	combinedPool, err := newX509CertPool(pems, c.autoTLS.connectCAPems, c.autoTLS.extraCAPems)
+	if err != nil {
+		return nil, err
+	}
+
+	if lc.VerifyIncoming {
+		if combinedPool == nil {
+			return nil, fmt.Errorf("VerifyIncoming set but no CA certificates were provided")
+		}
+
+		// We will use the auto_encrypt/auto_config cert for TLS in the incoming APIs when available. Therefore the check
+		// here will ensure that either we enabled one of those two features or a certificate and key were provided manually
+		if cert == nil && !base.AutoTLS {
+			return nil, fmt.Errorf("VerifyIncoming requires either a Cert and Key pair in the configuration file, or auto_encrypt/auto_config be enabled")
+		}
+	}
+
 	return &listenerConfig{
-		cfg:    lc,
-		cert:   cert,
-		caPems: pems,
-		caPool: pool,
+		cert:           cert,
+		manualCAPEMs:   pems,
+		manualCAPool:   manualPool,
+		combinedCAPool: combinedPool,
 	}, nil
 }
 
@@ -367,20 +332,30 @@ func (c *Configurator) UpdateAutoTLSCA(connectCAPems []string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	pool, err := newX509CertPool(c.internalRPC.caPems, c.internalRPC.autoTLS.extraCAPems, connectCAPems)
+	makePool := func(l listenerConfig) (*x509.CertPool, error) {
+		return newX509CertPool(l.manualCAPEMs, c.autoTLS.extraCAPems, connectCAPems)
+	}
+
+	// Make all of the pools up-front (before assigning anything) so that if any of
+	// them fails, we aren't left in a half-applied state.
+	internalRPCPool, err := makePool(c.internalRPC)
+	if err != nil {
+		return err
+	}
+	grpcPool, err := makePool(c.grpc)
+	if err != nil {
+		return err
+	}
+	httpsPool, err := makePool(c.https)
 	if err != nil {
 		return err
 	}
 
-	internalRPC := c.internalRPC
-	internalRPC.autoTLS.connectCAPems = connectCAPems
-	internalRPC.caPool = pool
+	c.autoTLS.connectCAPems = connectCAPems
+	c.internalRPC.combinedCAPool = internalRPCPool
+	c.grpc.combinedCAPool = grpcPool
+	c.https.combinedCAPool = httpsPool
 
-	if err := validateListenerConfig(*c.base, internalRPC); err != nil {
-		return err
-	}
-
-	c.internalRPC = internalRPC
 	atomic.AddUint64(&c.version, 1)
 	c.log("UpdateAutoTLSCA")
 	return nil
@@ -396,7 +371,7 @@ func (c *Configurator) UpdateAutoTLSCert(pub, priv string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	c.internalRPC.autoTLS.cert = &cert
+	c.autoTLS.cert = &cert
 	atomic.AddUint64(&c.version, 1)
 	c.log("UpdateAutoTLSCert")
 	return nil
@@ -413,23 +388,34 @@ func (c *Configurator) UpdateAutoTLS(manualCAPems, connectCAPems []string, pub, 
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	pool, err := newX509CertPool(c.internalRPC.caPems, manualCAPems, connectCAPems)
+	makePool := func(l listenerConfig) (*x509.CertPool, error) {
+		return newX509CertPool(l.manualCAPEMs, manualCAPems, connectCAPems)
+	}
+
+	// Make all of the pools up-front (before assigning anything) so that if any of
+	// them fails, we aren't left in a half-applied state.
+	internalRPCPool, err := makePool(c.internalRPC)
+	if err != nil {
+		return err
+	}
+	grpcPool, err := makePool(c.grpc)
+	if err != nil {
+		return err
+	}
+	httpsPool, err := makePool(c.https)
 	if err != nil {
 		return err
 	}
 
-	internalRPC := c.internalRPC
-	internalRPC.autoTLS.extraCAPems = manualCAPems
-	internalRPC.autoTLS.connectCAPems = connectCAPems
-	internalRPC.autoTLS.cert = &cert
-	internalRPC.caPool = pool
-	internalRPC.autoTLS.verifyServerHostname = verifyServerHostname
+	// TODO: validation.
 
-	if err := validateListenerConfig(*c.base, internalRPC); err != nil {
-		return err
-	}
-
-	c.internalRPC = internalRPC
+	c.autoTLS.extraCAPems = manualCAPems
+	c.autoTLS.connectCAPems = connectCAPems
+	c.autoTLS.cert = &cert
+	c.autoTLS.verifyServerHostname = verifyServerHostname
+	c.internalRPC.combinedCAPool = internalRPCPool
+	c.grpc.combinedCAPool = grpcPool
+	c.https.combinedCAPool = httpsPool
 
 	atomic.AddUint64(&c.version, 1)
 	c.log("UpdateAutoTLS")
@@ -544,21 +530,20 @@ func (c *Configurator) internalRPCTLSConfig(verifyIncoming bool) *tls.Config {
 
 	serverCert := cfg.cert
 	if serverCert == nil {
-		serverCert = cfg.autoTLS.cert
+		serverCert = c.autoTLS.cert
 	}
 
-	clientCert := cfg.autoTLS.cert
+	clientCert := c.autoTLS.cert
 	if clientCert == nil {
 		clientCert = cfg.cert
 	}
 
 	config := c.commonTLSConfig(
-		cfg.listenerConfig,
-		serverCert,
-		clientCert,
+		cfg,
+		c.base.InternalRPC.ListenerConfig,
 		verifyIncoming,
 	)
-	config.InsecureSkipVerify = !cfg.cfg.VerifyServerHostname
+	config.InsecureSkipVerify = !c.base.InternalRPC.VerifyServerHostname
 
 	return config
 }
@@ -571,31 +556,37 @@ func (c *Configurator) internalRPCTLSConfig(verifyIncoming bool) *tls.Config {
 // TODO: fix this comment.
 func (c *Configurator) commonTLSConfig(
 	cfg listenerConfig,
-	serverCert, clientCert *tls.Certificate,
+	cfg2 ListenerConfig,
 	verifyIncoming bool,
 ) *tls.Config {
 	tlsConfig := &tls.Config{}
 
 	// Set the cipher suites
-	if len(cfg.cfg.CipherSuites) != 0 {
-		tlsConfig.CipherSuites = cfg.cfg.CipherSuites
+	if len(cfg2.CipherSuites) != 0 {
+		tlsConfig.CipherSuites = cfg2.CipherSuites
 	}
 
-	tlsConfig.PreferServerCipherSuites = cfg.cfg.PreferServerCipherSuites
+	tlsConfig.PreferServerCipherSuites = cfg2.PreferServerCipherSuites
 
 	// GetCertificate is used when acting as a server and responding to
 	// client requests. Default to the manually configured cert, but allow
 	// autoEncrypt cert too so that a client can encrypt incoming
 	// connections without having a manual cert configured.
 	tlsConfig.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
-		return serverCert, nil
+		if cfg.cert != nil {
+			return cfg.cert, nil
+		}
+		return c.autoTLS.cert, nil
 	}
 
 	// GetClientCertificate is used when acting as a client and responding
 	// to a server requesting a certificate. Return the autoEncrypt certificate
 	// if possible, otherwise default to the manually provisioned one.
 	tlsConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-		cert := clientCert
+		cert := c.autoTLS.cert
+		if cert == nil {
+			cert = cfg.cert
+		}
 
 		if cert == nil {
 			// the return value MUST not be nil but an empty certificate will be
@@ -606,13 +597,13 @@ func (c *Configurator) commonTLSConfig(
 		return cert, nil
 	}
 
-	tlsConfig.ClientCAs = cfg.caPool
-	tlsConfig.RootCAs = cfg.caPool
+	tlsConfig.ClientCAs = cfg.combinedCAPool
+	tlsConfig.RootCAs = cfg.combinedCAPool
 
 	// This is possible because tlsLookup also contains "" with golang's
 	// default (tls10). And because the initial check makes sure the
 	// version correctly matches.
-	tlsConfig.MinVersion = tlsLookup[cfg.cfg.TLSMinVersion]
+	tlsConfig.MinVersion = tlsLookup[cfg2.TLSMinVersion]
 
 	// Set ClientAuth if necessary
 	if verifyIncoming {
@@ -630,7 +621,7 @@ func (c *Configurator) Cert() *tls.Certificate {
 	defer c.lock.RUnlock()
 	cert := c.internalRPC.cert
 	if cert == nil {
-		cert = c.internalRPC.autoTLS.cert
+		cert = c.autoTLS.cert
 	}
 	return cert
 }
@@ -651,7 +642,7 @@ func (c *Configurator) ExternalGRPCCert() *tls.Certificate {
 func (c *Configurator) VerifyIncomingInternalRPC() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.internalRPC.cfg.VerifyIncoming
+	return c.base.InternalRPC.VerifyIncoming
 }
 
 // This function acquires a read lock because it reads from the config.
@@ -660,7 +651,7 @@ func (c *Configurator) outgoingRPCTLSEnabled() bool {
 	defer c.lock.RUnlock()
 
 	// use TLS if AutoEncrypt or VerifyOutgoing are enabled.
-	return c.base.AutoTLS || c.internalRPC.cfg.VerifyOutgoing
+	return c.base.AutoTLS || c.base.InternalRPC.VerifyOutgoing
 }
 
 // InternalRPCMutualTLSCapable returns true if Configurator has a CA and a local TLS
@@ -668,7 +659,7 @@ func (c *Configurator) outgoingRPCTLSEnabled() bool {
 func (c *Configurator) InternalRPCMutualTLSCapable() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.internalRPC.caPool != nil && (c.internalRPC.autoTLS.cert != nil || c.internalRPC.cert != nil)
+	return c.internalRPC.combinedCAPool != nil && (c.autoTLS.cert != nil || c.internalRPC.cert != nil)
 }
 
 // This function acquires a read lock because it reads from the config.
@@ -678,11 +669,11 @@ func (c *Configurator) verifyOutgoing() bool {
 
 	// If AutoEncryptTLS is enabled and there is a CA, then verify
 	// outgoing.
-	if c.base.AutoTLS && c.internalRPC.caPool != nil {
+	if c.base.AutoTLS && c.internalRPC.combinedCAPool != nil {
 		return true
 	}
 
-	return c.internalRPC.cfg.VerifyOutgoing
+	return c.base.InternalRPC.VerifyOutgoing
 }
 
 func (c *Configurator) ServerSNI(dc, nodeName string) string {
@@ -721,7 +712,7 @@ func (c *Configurator) serverNameOrNodeName() string {
 func (c *Configurator) VerifyServerHostname() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.internalRPC.cfg.VerifyServerHostname || c.internalRPC.autoTLS.verifyServerHostname
+	return c.base.InternalRPC.VerifyServerHostname || c.autoTLS.verifyServerHostname
 }
 
 // IncomingExternalGRPCConfig generates a *tls.Config for incoming
@@ -734,9 +725,8 @@ func (c *Configurator) IncomingExternalGRPCConfig() *tls.Config {
 	// because there wasn't a corresponding option.
 	config := c.commonTLSConfig(
 		c.grpc,
-		c.grpc.cert,
-		c.grpc.cert,
-		c.grpc.cfg.VerifyIncoming,
+		c.base.GRPC,
+		c.base.GRPC.VerifyIncoming,
 	)
 	config.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
 		return c.IncomingExternalGRPCConfig(), nil
@@ -747,7 +737,7 @@ func (c *Configurator) IncomingExternalGRPCConfig() *tls.Config {
 // IncomingRPCConfig generates a *tls.Config for incoming RPC connections.
 func (c *Configurator) IncomingRPCConfig() *tls.Config {
 	c.log("IncomingRPCConfig")
-	config := c.internalRPCTLSConfig(c.internalRPC.cfg.VerifyIncoming)
+	config := c.internalRPCTLSConfig(c.base.InternalRPC.VerifyIncoming)
 	config.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
 		return c.IncomingRPCConfig(), nil
 	}
@@ -791,11 +781,12 @@ func (c *Configurator) IncomingHTTPSConfig() *tls.Config {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
+	// TODO: tests for https auto-tls.
+
 	config := c.commonTLSConfig(
 		c.https,
-		c.https.cert,
-		c.https.cert,
-		c.https.cfg.VerifyIncoming,
+		c.base.HTTPS,
+		c.base.HTTPS.VerifyIncoming,
 	)
 	config.NextProtos = []string{"h2", "http/1.1"}
 	config.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
@@ -896,7 +887,7 @@ func (c *Configurator) OutgoingALPNInternalRPCWrapper() ALPNWrapper {
 func (c *Configurator) AutoEncryptCert() *x509.Certificate {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	tlsCert := c.internalRPC.autoTLS.cert
+	tlsCert := c.autoTLS.cert
 	if tlsCert == nil || tlsCert.Certificate == nil {
 		return nil
 	}

@@ -736,13 +736,21 @@ func TestConfigurator_Validation(t *testing.T) {
 		}
 	})
 
-	t.Run("internal RPC, VerifyIncoming + AutoTLS", func(t *testing.T) {
+	t.Run("VerifyIncoming + AutoTLS", func(t *testing.T) {
 		cfg := Config{
 			InternalRPC: InternalRPCListenerConfig{
 				ListenerConfig: ListenerConfig{
 					VerifyIncoming: true,
 					CAFile:         caFile,
 				},
+			},
+			GRPC: ListenerConfig{
+				VerifyIncoming: true,
+				CAFile:         caFile,
+			},
+			HTTPS: ListenerConfig{
+				VerifyIncoming: true,
+				CAFile:         caFile,
 			},
 			AutoTLS: true,
 		}
@@ -879,10 +887,10 @@ func TestConfigurator_CommonTLSConfigGetClientCertificate(t *testing.T) {
 
 	c2, err := loadKeyPair("../test/key/ourdomain.cer", "../test/key/ourdomain.key")
 	require.NoError(t, err)
-	c.internalRPC.autoTLS.cert = c2
+	c.autoTLS.cert = c2
 	cert, err = c.internalRPCTLSConfig(false).GetClientCertificate(nil)
 	require.NoError(t, err)
-	require.Equal(t, c.internalRPC.autoTLS.cert, cert)
+	require.Equal(t, c.autoTLS.cert, cert)
 }
 
 // TODO: Same (no Update).
@@ -897,10 +905,10 @@ func TestConfigurator_CommonTLSConfigGetCertificate(t *testing.T) {
 	// Setting a certificate as the auto-encrypt cert will return it as the regular server certificate
 	c1, err := loadKeyPair("../test/key/something_expired.cer", "../test/key/something_expired.key")
 	require.NoError(t, err)
-	c.internalRPC.autoTLS.cert = c1
+	c.autoTLS.cert = c1
 	cert, err = c.internalRPCTLSConfig(false).GetCertificate(nil)
 	require.NoError(t, err)
-	require.Equal(t, c.internalRPC.autoTLS.cert, cert)
+	require.Equal(t, c.autoTLS.cert, cert)
 
 	// Setting a different certificate as a manual cert will override the auto-encrypt cert and instead return the manual cert
 	c2, err := loadKeyPair("../test/key/ourdomain.cer", "../test/key/ourdomain.key")
@@ -918,9 +926,9 @@ func TestConfigurator_CommonTLSConfigCAs(t *testing.T) {
 	require.Nil(t, c.internalRPCTLSConfig(false).ClientCAs)
 	require.Nil(t, c.internalRPCTLSConfig(false).RootCAs)
 
-	c.internalRPC.caPool = &x509.CertPool{}
-	require.Equal(t, c.internalRPC.caPool, c.internalRPCTLSConfig(false).ClientCAs)
-	require.Equal(t, c.internalRPC.caPool, c.internalRPCTLSConfig(false).RootCAs)
+	c.internalRPC.combinedCAPool = &x509.CertPool{}
+	require.Equal(t, c.internalRPC.combinedCAPool, c.internalRPCTLSConfig(false).ClientCAs)
+	require.Equal(t, c.internalRPC.combinedCAPool, c.internalRPCTLSConfig(false).RootCAs)
 }
 
 // TODO: Same (no Update).
@@ -973,8 +981,8 @@ func TestConfigurator_OutgoingRPCTLSDisabled(t *testing.T) {
 	}
 	for i, v := range variants {
 		info := fmt.Sprintf("case %d", i)
-		c.internalRPC.caPool = v.pool
-		c.internalRPC.cfg.VerifyOutgoing = v.verify
+		c.internalRPC.combinedCAPool = v.pool
+		c.base.InternalRPC.VerifyOutgoing = v.verify
 		c.base.AutoTLS = v.autoEncryptTLS
 		require.Equal(t, v.expected, c.outgoingRPCTLSEnabled(), info)
 	}
@@ -1074,7 +1082,7 @@ func TestConfigurator_UpdateAutoTLSCA_DoesNotPanic(t *testing.T) {
 
 func TestConfigurator_VerifyIncomingRPC(t *testing.T) {
 	c := Configurator{base: &Config{}}
-	c.internalRPC.cfg.VerifyIncoming = true
+	c.base.InternalRPC.VerifyIncoming = true
 	require.True(t, c.VerifyIncomingInternalRPC())
 }
 
@@ -1156,7 +1164,7 @@ func TestConfigurator_IncomingHTTPSConfig(t *testing.T) {
 
 	t.Run("verify incoming", func(t *testing.T) {
 		c := Configurator{base: &Config{}}
-		c.https.cfg.VerifyIncoming = true
+		c.base.HTTPS.VerifyIncoming = true
 
 		cfg := c.IncomingHTTPSConfig()
 
@@ -1466,7 +1474,7 @@ func TestConfigurator_UpdateChecks(t *testing.T) {
 func TestConfigurator_UpdateSetsStuff(t *testing.T) {
 	c, err := NewConfigurator(Config{}, nil)
 	require.NoError(t, err)
-	require.Nil(t, c.internalRPC.caPool)
+	require.Nil(t, c.internalRPC.combinedCAPool)
 	require.Nil(t, c.internalRPC.cert)
 	require.Equal(t, c.base, &Config{})
 	require.Equal(t, uint64(1), c.version)
@@ -1484,8 +1492,8 @@ func TestConfigurator_UpdateSetsStuff(t *testing.T) {
 		},
 	}
 	require.NoError(t, c.Update(config))
-	require.NotNil(t, c.internalRPC.caPool)
-	require.Len(t, c.internalRPC.caPool.Subjects(), 1)
+	require.NotNil(t, c.internalRPC.combinedCAPool)
+	require.Len(t, c.internalRPC.combinedCAPool.Subjects(), 1)
 	require.NotNil(t, c.internalRPC.cert)
 	require.Equal(t, c.base, &config)
 	require.Equal(t, uint64(2), c.version)
@@ -1530,8 +1538,8 @@ func TestConfigurator_VerifyOutgoing(t *testing.T) {
 	}
 	for i, v := range variants {
 		info := fmt.Sprintf("case %d", i)
-		c.internalRPC.caPool = v.pool
-		c.internalRPC.cfg.VerifyOutgoing = v.verify
+		c.internalRPC.combinedCAPool = v.pool
+		c.base.InternalRPC.VerifyOutgoing = v.verify
 		c.base.AutoTLS = v.autoEncryptTLS
 		require.Equal(t, v.expected, c.verifyOutgoing(), info)
 	}
@@ -1546,16 +1554,16 @@ func TestConfigurator_VerifyServerHostname(t *testing.T) {
 	c := Configurator{base: &Config{}}
 	require.False(t, c.VerifyServerHostname())
 
-	c.internalRPC.cfg.VerifyServerHostname = true
-	c.internalRPC.autoTLS.verifyServerHostname = false
+	c.base.InternalRPC.VerifyServerHostname = true
+	c.autoTLS.verifyServerHostname = false
 	require.True(t, c.VerifyServerHostname())
 
-	c.internalRPC.cfg.VerifyServerHostname = false
-	c.internalRPC.autoTLS.verifyServerHostname = true
+	c.base.InternalRPC.VerifyServerHostname = false
+	c.autoTLS.verifyServerHostname = true
 	require.True(t, c.VerifyServerHostname())
 
-	c.internalRPC.cfg.VerifyServerHostname = true
-	c.internalRPC.autoTLS.verifyServerHostname = true
+	c.base.InternalRPC.VerifyServerHostname = true
+	c.autoTLS.verifyServerHostname = true
 	require.True(t, c.VerifyServerHostname())
 }
 
@@ -1565,12 +1573,12 @@ func TestConfigurator_AutoEncryptCert(t *testing.T) {
 
 	cert, err := loadKeyPair("../test/key/something_expired.cer", "../test/key/something_expired.key")
 	require.NoError(t, err)
-	c.internalRPC.autoTLS.cert = cert
+	c.autoTLS.cert = cert
 	require.Equal(t, int64(1561561551), c.AutoEncryptCert().NotAfter.Unix())
 
 	cert, err = loadKeyPair("../test/key/ourdomain.cer", "../test/key/ourdomain.key")
 	require.NoError(t, err)
-	c.internalRPC.autoTLS.cert = cert
+	c.autoTLS.cert = cert
 	require.Equal(t, int64(4679716209), c.AutoEncryptCert().NotAfter.Unix())
 }
 
