@@ -8,6 +8,7 @@ import (
 
 	envoy_route_v3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	testinf "github.com/mitchellh/go-testing-interface"
 	"github.com/stretchr/testify/require"
@@ -16,7 +17,9 @@ import (
 	"github.com/hashicorp/consul/agent/consul/discoverychain"
 	"github.com/hashicorp/consul/agent/proxycfg"
 	"github.com/hashicorp/consul/agent/structs"
+	"github.com/hashicorp/consul/agent/xds/internal/serverless_plugin"
 	"github.com/hashicorp/consul/agent/xds/proxysupport"
+	"github.com/hashicorp/consul/agent/xds/shared"
 	"github.com/hashicorp/consul/sdk/testutil"
 )
 
@@ -325,6 +328,47 @@ func TestRoutesFromSnapshot(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:   "terminating-gateway-with-serverless-service",
+			create: proxycfg.TestConfigSnapshotTerminatingGateway,
+			setup: func(snap *proxycfg.ConfigSnapshot) {
+				serviceName := structs.NewServiceName("web", nil)
+				snap.TerminatingGateway.ServiceConfigs[serviceName] = &structs.ServiceConfigResponse{
+					ProxyConfig: map[string]interface{}{"protocol": "http"},
+					Meta: map[string]string{
+						serverless_plugin.LambdaEnabledTag:            "true",
+						serverless_plugin.LambdaArnTag:                "arn:aws:lambda:us-east-2:977604411308:function:consul-ecs-lambda-test",
+						serverless_plugin.LambdaPayloadPassthroughTag: "true",
+						serverless_plugin.LambdaRegionTag:             "us-east-2",
+					},
+				}
+			},
+		},
+		{
+			name: "connect-proxy-with-lambda-stuff",
+			create: func(t testinf.T) *proxycfg.ConfigSnapshot {
+				snapshot := proxycfg.TestConfigSnapshotDiscoveryChainWithEntries(t,
+					&structs.ProxyConfigEntry{
+						Kind: structs.ProxyDefaults,
+						Name: structs.ProxyConfigGlobal,
+						Config: map[string]interface{}{
+							"protocol": "http",
+						},
+					},
+				)
+				serviceName := structs.NewServiceName("db", nil)
+				snapshot.ConnectProxy.ServiceConfigs[serviceName] = &structs.ServiceConfigEntry{
+					Meta: map[string]string{
+						serverless_plugin.LambdaEnabledTag:            "true",
+						serverless_plugin.LambdaArnTag:                "arn:aws:lambda:us-east-2:977604411308:function:consul-ecs-lambda-test",
+						serverless_plugin.LambdaPayloadPassthroughTag: "true",
+						serverless_plugin.LambdaRegionTag:             "us-east-2",
+					},
+				}
+				return snapshot
+			},
+			setup: nil,
+		},
 	}
 
 	latestEnvoyVersion := proxysupport.EnvoyVersions[0]
@@ -349,13 +393,24 @@ func TestRoutesFromSnapshot(t *testing.T) {
 					g := newResourceGenerator(testutil.Logger(t), nil, nil, false)
 					g.ProxyFeatures = sf
 
-					routes, err := g.routesFromSnapshot(snap)
+					originalRoutes, err := g.routesFromSnapshot(snap)
 					require.NoError(t, err)
+					res := make(map[string][]proto.Message)
+					res[shared.RouteType] = originalRoutes
+
+					indexedResources := indexResources(g.Logger, res)
+					newResourceMap, err := serverless_plugin.MutateIndexedResources(indexedResources, shared.MakeMutateConfiguration(snap))
+					require.NoError(t, err)
+
+					var routes []proto.Message
+					for _, l := range newResourceMap.Index[shared.RouteType] {
+						routes = append(routes, l)
+					}
 
 					sort.Slice(routes, func(i, j int) bool {
 						return routes[i].(*envoy_route_v3.RouteConfiguration).Name < routes[j].(*envoy_route_v3.RouteConfiguration).Name
 					})
-					r, err := createResponse(RouteType, "00000001", "00000001", routes)
+					r, err := createResponse(shared.RouteType, "00000001", "00000001", routes)
 					require.NoError(t, err)
 
 					t.Run("current", func(t *testing.T) {

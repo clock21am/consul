@@ -19,7 +19,9 @@ import (
 	"github.com/hashicorp/consul/agent/consul/discoverychain"
 	"github.com/hashicorp/consul/agent/proxycfg"
 	"github.com/hashicorp/consul/agent/structs"
+	"github.com/hashicorp/consul/agent/xds/internal/serverless_plugin"
 	"github.com/hashicorp/consul/agent/xds/proxysupport"
+	"github.com/hashicorp/consul/agent/xds/shared"
 	"github.com/hashicorp/consul/sdk/testutil"
 )
 
@@ -232,10 +234,10 @@ func TestClustersFromSnapshot(t *testing.T) {
 				serviceName := structs.NewServiceName("db", nil)
 				snapshot.ConnectProxy.ServiceConfigs[serviceName] = &structs.ServiceConfigEntry{
 					Meta: map[string]string{
-						lambdaEnabledTag:      "true",
-						arnTag:                "arn:aws:lambda:us-east-2:977604411308:function:consul-ecs-lambda-test",
-						payloadPassthroughTag: "true",
-						regionTag:             "us-east-2",
+						serverless_plugin.LambdaEnabledTag:            "true",
+						serverless_plugin.LambdaArnTag:                "arn:aws:lambda:us-east-2:977604411308:function:consul-ecs-lambda-test",
+						serverless_plugin.LambdaPayloadPassthroughTag: "true",
+						serverless_plugin.LambdaRegionTag:             "us-east-2",
 					},
 				}
 				return snapshot
@@ -669,10 +671,10 @@ func TestClustersFromSnapshot(t *testing.T) {
 				snap.TerminatingGateway.ServiceConfigs[serviceName] = &structs.ServiceConfigResponse{
 					ProxyConfig: map[string]interface{}{"protocol": "http"},
 					Meta: map[string]string{
-						lambdaEnabledTag:      "true",
-						arnTag:                "arn:aws:lambda:us-east-2:977604411308:function:consul-ecs-lambda-test",
-						payloadPassthroughTag: "true",
-						regionTag:             "us-east-2",
+						serverless_plugin.LambdaEnabledTag:            "true",
+						serverless_plugin.LambdaArnTag:                "arn:aws:lambda:us-east-2:977604411308:function:consul-ecs-lambda-test",
+						serverless_plugin.LambdaPayloadPassthroughTag: "true",
+						serverless_plugin.LambdaRegionTag:             "us-east-2",
 					},
 				}
 			},
@@ -798,14 +800,14 @@ func TestClustersFromSnapshot(t *testing.T) {
 					require.NoError(t, err)
 
 					res := make(map[string][]proto.Message)
-					res[ClusterType] = originalClusters
+					res[shared.ClusterType] = originalClusters
 
 					indexedResources := indexResources(g.Logger, res)
-					newResourceMap, err := MutateIndexedResources(indexedResources, makeMutateConfiguration(snap))
+					newResourceMap, err := serverless_plugin.MutateIndexedResources(indexedResources, shared.MakeMutateConfiguration(snap))
 					require.NoError(t, err)
 
 					var clusters []proto.Message
-					for _, c := range newResourceMap.Index[ClusterType] {
+					for _, c := range newResourceMap.Index[shared.ClusterType] {
 						clusters = append(clusters, c)
 					}
 
@@ -813,7 +815,7 @@ func TestClustersFromSnapshot(t *testing.T) {
 						return clusters[i].(*envoy_cluster_v3.Cluster).Name < clusters[j].(*envoy_cluster_v3.Cluster).Name
 					})
 
-					r, err := createResponse(ClusterType, "00000001", "00000001", clusters)
+					r, err := createResponse(shared.ClusterType, "00000001", "00000001", clusters)
 					require.NoError(t, err)
 
 					t.Run("current", func(t *testing.T) {

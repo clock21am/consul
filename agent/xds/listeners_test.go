@@ -18,7 +18,9 @@ import (
 	"github.com/hashicorp/consul/agent/consul/discoverychain"
 	"github.com/hashicorp/consul/agent/proxycfg"
 	"github.com/hashicorp/consul/agent/structs"
+	"github.com/hashicorp/consul/agent/xds/internal/serverless_plugin"
 	"github.com/hashicorp/consul/agent/xds/proxysupport"
+	"github.com/hashicorp/consul/agent/xds/shared"
 	"github.com/hashicorp/consul/sdk/testutil"
 	"github.com/hashicorp/consul/types"
 )
@@ -229,10 +231,10 @@ func TestListenersFromSnapshot(t *testing.T) {
 				serviceName := structs.NewServiceName("db", nil)
 				snapshot.ConnectProxy.ServiceConfigs[serviceName] = &structs.ServiceConfigEntry{
 					Meta: map[string]string{
-						lambdaEnabledTag:      "true",
-						arnTag:                "arn:aws:lambda:us-east-2:977604411308:function:consul-ecs-lambda-test",
-						payloadPassthroughTag: "true",
-						regionTag:             "us-east-2",
+						serverless_plugin.LambdaEnabledTag:            "true",
+						serverless_plugin.LambdaArnTag:                "arn:aws:lambda:us-east-2:977604411308:function:consul-ecs-lambda-test",
+						serverless_plugin.LambdaPayloadPassthroughTag: "true",
+						serverless_plugin.LambdaRegionTag:             "us-east-2",
 					},
 				}
 				return snapshot
@@ -528,10 +530,10 @@ func TestListenersFromSnapshot(t *testing.T) {
 				snap.TerminatingGateway.ServiceConfigs[serviceName] = &structs.ServiceConfigResponse{
 					ProxyConfig: map[string]interface{}{"protocol": "http"},
 					Meta: map[string]string{
-						lambdaEnabledTag:      "true",
-						arnTag:                "arn:aws:lambda:us-east-2:977604411308:function:consul-ecs-lambda-test",
-						payloadPassthroughTag: "true",
-						regionTag:             "us-east-2",
+						serverless_plugin.LambdaEnabledTag:            "true",
+						serverless_plugin.LambdaArnTag:                "arn:aws:lambda:us-east-2:977604411308:function:consul-ecs-lambda-test",
+						serverless_plugin.LambdaPayloadPassthroughTag: "true",
+						serverless_plugin.LambdaRegionTag:             "us-east-2",
 					},
 				}
 			},
@@ -1370,14 +1372,14 @@ func TestListenersFromSnapshot(t *testing.T) {
 					originalListeners, err := g.listenersFromSnapshot(snap)
 					require.NoError(t, err)
 					res := make(map[string][]proto.Message)
-					res[ListenerType] = originalListeners
+					res[shared.ListenerType] = originalListeners
 
 					indexedResources := indexResources(g.Logger, res)
-					newResourceMap, err := MutateIndexedResources(indexedResources, makeMutateConfiguration(snap))
+					newResourceMap, err := serverless_plugin.MutateIndexedResources(indexedResources, shared.MakeMutateConfiguration(snap))
 					require.NoError(t, err)
 
 					var listeners []proto.Message
-					for _, l := range newResourceMap.Index[ListenerType] {
+					for _, l := range newResourceMap.Index[shared.ListenerType] {
 						listeners = append(listeners, l)
 					}
 
@@ -1387,7 +1389,7 @@ func TestListenersFromSnapshot(t *testing.T) {
 						return listeners[i].(*envoy_listener_v3.Listener).Name < listeners[j].(*envoy_listener_v3.Listener).Name
 					})
 
-					r, err := createResponse(ListenerType, "00000001", "00000001", listeners)
+					r, err := createResponse(shared.ListenerType, "00000001", "00000001", listeners)
 					require.NoError(t, err)
 
 					t.Run("current", func(t *testing.T) {
