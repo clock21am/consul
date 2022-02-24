@@ -526,20 +526,8 @@ func LoadCAs(caFile, caPath string) ([]string, error) {
 }
 
 func (c *Configurator) internalRPCTLSConfig(verifyIncoming bool) *tls.Config {
-	cfg := c.internalRPC
-
-	serverCert := cfg.cert
-	if serverCert == nil {
-		serverCert = c.autoTLS.cert
-	}
-
-	clientCert := c.autoTLS.cert
-	if clientCert == nil {
-		clientCert = cfg.cert
-	}
-
 	config := c.commonTLSConfig(
-		cfg,
+		c.internalRPC,
 		c.base.InternalRPC.ListenerConfig,
 		verifyIncoming,
 	)
@@ -626,13 +614,11 @@ func (c *Configurator) Cert() *tls.Certificate {
 	return cert
 }
 
-// This function acquires a read lock because it reads from the config.
-//
-// TODO: Test this.
-func (c *Configurator) ExternalGRPCCert() *tls.Certificate {
+// GRPCTLSEnabled returns whether TLS is enabled for gRPC connections.
+func (c *Configurator) GRPCTLSEnabled() bool {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
-	return c.grpc.cert
+	return c.grpc.cert != nil || c.autoTLS.cert != nil
 }
 
 // VerifyIncomingInternalRPC returns true if the configuration has enabled either
@@ -715,10 +701,10 @@ func (c *Configurator) VerifyServerHostname() bool {
 	return c.base.InternalRPC.VerifyServerHostname || c.autoTLS.verifyServerHostname
 }
 
-// IncomingExternalGRPCConfig generates a *tls.Config for incoming
-// external (e.g. xDS) GRPC connections.
-func (c *Configurator) IncomingExternalGRPCConfig() *tls.Config {
-	c.log("IncomingExternalGRPCConfig")
+// IncomingGRPCConfig generates a *tls.Config for incoming external (e.g. xDS)
+// GRPC connections.
+func (c *Configurator) IncomingGRPCConfig() *tls.Config {
+	c.log("IncomingGRPConfig")
 
 	// TODO: When implementing the old deprecated fields, we need to maintain the
 	// previous behaviour where we'd never verify incoming on gRPC connections
@@ -729,7 +715,7 @@ func (c *Configurator) IncomingExternalGRPCConfig() *tls.Config {
 		c.base.GRPC.VerifyIncoming,
 	)
 	config.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
-		return c.IncomingExternalGRPCConfig(), nil
+		return c.IncomingGRPCConfig(), nil
 	}
 	return config
 }
