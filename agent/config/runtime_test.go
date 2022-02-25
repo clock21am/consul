@@ -32,6 +32,7 @@ import (
 	"github.com/hashicorp/consul/lib"
 	"github.com/hashicorp/consul/logging"
 	"github.com/hashicorp/consul/sdk/testutil"
+	"github.com/hashicorp/consul/tlsutil"
 	"github.com/hashicorp/consul/types"
 )
 
@@ -6535,23 +6536,30 @@ func TestRuntime_ToTLSUtilConfig(t *testing.T) {
 		AutoEncryptTLS:              true,
 	}
 	r := c.ToTLSUtilConfig()
-	require.True(t, r.VerifyIncoming)
-	require.True(t, r.VerifyIncomingRPC)
-	require.True(t, r.VerifyIncomingHTTPS)
-	require.True(t, r.VerifyOutgoing)
-	require.True(t, r.EnableAgentTLSForChecks)
-	require.True(t, r.AutoTLS)
-	require.True(t, r.VerifyServerHostname)
-	require.True(t, r.PreferServerCipherSuites)
-	require.Equal(t, "a", r.CAFile)
-	require.Equal(t, "b", r.CAPath)
-	require.Equal(t, "c", r.CertFile)
-	require.Equal(t, "d", r.KeyFile)
+
+	for _, l := range []tlsutil.ListenerConfig{r.InternalRPC.ListenerConfig, r.GRPC, r.HTTPS} {
+		require.True(t, l.PreferServerCipherSuites)
+		require.Equal(t, "a", l.CAFile)
+		require.Equal(t, "b", l.CAPath)
+		require.Equal(t, "c", l.CertFile)
+		require.Equal(t, "d", l.KeyFile)
+		require.Equal(t, "tls12", l.TLSMinVersion)
+		require.Equal(t, []uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA}, l.CipherSuites)
+	}
+
+	require.True(t, r.InternalRPC.VerifyIncoming)
+	require.True(t, r.InternalRPC.VerifyServerHostname)
+	require.True(t, r.InternalRPC.VerifyOutgoing)
+
+	require.True(t, r.HTTPS.VerifyIncoming)
+
+	require.False(t, r.GRPC.VerifyIncoming)
+
 	require.Equal(t, "e", r.NodeName)
 	require.Equal(t, "f", r.ServerName)
 	require.Equal(t, "g", r.Domain)
-	require.Equal(t, "tls12", r.TLSMinVersion)
-	require.Equal(t, []uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA}, r.CipherSuites)
+	require.True(t, r.AutoTLS)
+	require.True(t, r.EnableAgentTLSForChecks)
 }
 
 func TestRuntime_ToTLSUtilConfig_AutoConfig(t *testing.T) {
@@ -6575,23 +6583,30 @@ func TestRuntime_ToTLSUtilConfig_AutoConfig(t *testing.T) {
 		AutoConfig:                  AutoConfig{Enabled: true},
 	}
 	r := c.ToTLSUtilConfig()
-	require.True(t, r.VerifyIncoming)
-	require.True(t, r.VerifyIncomingRPC)
-	require.True(t, r.VerifyIncomingHTTPS)
-	require.True(t, r.VerifyOutgoing)
-	require.True(t, r.EnableAgentTLSForChecks)
-	require.True(t, r.AutoTLS)
-	require.True(t, r.VerifyServerHostname)
-	require.True(t, r.PreferServerCipherSuites)
-	require.Equal(t, "a", r.CAFile)
-	require.Equal(t, "b", r.CAPath)
-	require.Equal(t, "c", r.CertFile)
-	require.Equal(t, "d", r.KeyFile)
+
+	for _, l := range []tlsutil.ListenerConfig{r.InternalRPC.ListenerConfig, r.GRPC, r.HTTPS} {
+		require.True(t, l.PreferServerCipherSuites)
+		require.Equal(t, "a", l.CAFile)
+		require.Equal(t, "b", l.CAPath)
+		require.Equal(t, "c", l.CertFile)
+		require.Equal(t, "d", l.KeyFile)
+		require.Equal(t, "tls12", l.TLSMinVersion)
+		require.Equal(t, []uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA}, l.CipherSuites)
+	}
+
+	require.True(t, r.InternalRPC.VerifyIncoming)
+	require.True(t, r.InternalRPC.VerifyServerHostname)
+	require.True(t, r.InternalRPC.VerifyOutgoing)
+
+	require.True(t, r.HTTPS.VerifyIncoming)
+
+	require.False(t, r.GRPC.VerifyIncoming)
+
 	require.Equal(t, "e", r.NodeName)
 	require.Equal(t, "f", r.ServerName)
 	require.Equal(t, "g", r.Domain)
-	require.Equal(t, "tls12", r.TLSMinVersion)
-	require.Equal(t, []uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA}, r.CipherSuites)
+	require.True(t, r.AutoTLS)
+	require.True(t, r.EnableAgentTLSForChecks)
 }
 
 func Test_UIPathBuilder(t *testing.T) {
