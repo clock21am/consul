@@ -233,12 +233,15 @@ type Config struct {
 	StartJoinAddrsLAN                []string            `mapstructure:"start_join"`
 	StartJoinAddrsWAN                []string            `mapstructure:"start_join_wan"`
 	SyslogFacility                   *string             `mapstructure:"syslog_facility"`
-	TLSCipherSuites                  *string             `mapstructure:"tls_cipher_suites"`
-	TLSMinVersion                    *string             `mapstructure:"tls_min_version"`
-	TLSPreferServerCipherSuites      *bool               `mapstructure:"tls_prefer_server_cipher_suites"`
-	TaggedAddresses                  map[string]string   `mapstructure:"tagged_addresses"`
-	Telemetry                        Telemetry           `mapstructure:"telemetry"`
-	TranslateWANAddrs                *bool               `mapstructure:"translate_wan_addrs"`
+
+	TLS *TLS `mapstructure:"tls"`
+
+	TLSCipherSuites             *string           `mapstructure:"tls_cipher_suites"`
+	TLSMinVersion               *string           `mapstructure:"tls_min_version"`
+	TLSPreferServerCipherSuites *bool             `mapstructure:"tls_prefer_server_cipher_suites"`
+	TaggedAddresses             map[string]string `mapstructure:"tagged_addresses"`
+	Telemetry                   Telemetry         `mapstructure:"telemetry"`
+	TranslateWANAddrs           *bool             `mapstructure:"translate_wan_addrs"`
 
 	// DEPRECATED (ui-config) - moved to the ui_config stanza
 	UI *bool `mapstructure:"ui"`
@@ -857,4 +860,26 @@ type RawUIMetricsProxyAddHeader struct {
 
 type RPC struct {
 	EnableStreaming *bool `mapstructure:"enable_streaming"`
+}
+
+type TLSListener struct {
+	CAFile          *string `mapstructure:"ca_file"`
+	CAPath          *string `mapstructure:"ca_path"`
+	CertFile        *string `mapstructure:"cert_file"`
+	KeyFile         *string `mapstructure:"key_file"`
+	TLSMinVersion   *string `mapstructure:"tls_min_version"`
+	TLSCipherSuites *string `mapstructure:"tls_cipher_suites"`
+	VerifyIncoming  *bool   `mapstructure:"verify_incoming"`
+
+	// TODO: These should only be allowed on InternalRPC.
+	ServerName           *string `mapstructure:"server_name"`
+	VerifyOutgoing       *bool   `mapstructure:"verify_outgoing"`
+	VerifyServerHostname *bool   `mapstructure:"verify_server_hostname"`
+}
+
+type TLS struct {
+	Defaults    *TLSListener `mapstructure:"defaults"`
+	InternalRPC *TLSListener `mapstructure:"internal_rpc"`
+	HTTPS       *TLSListener `mapstructure:"https"`
+	GRPC        *TLSListener `mapstructure:"grpc"`
 }

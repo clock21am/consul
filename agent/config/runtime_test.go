@@ -5198,6 +5198,122 @@ func TestLoad_IntegrationWithFlags(t *testing.T) {
 			}`},
 		expectedErr: "advertise_reconnect_timeout can only be used on a client",
 	})
+
+	run(t, testCase{
+		desc: "TLS defaults and overrides",
+		args: []string{
+			`-data-dir=` + dataDir,
+		},
+		hcl: []string{`
+			tls {
+				defaults {
+					ca_file = "default_ca_file"
+					ca_path = "default_ca_path"
+					cert_file = "default_cert_file"
+					tls_min_version = "tls12"
+					tls_cipher_suites = "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256"
+					verify_incoming = true
+				}
+
+				internal_rpc {
+					ca_file = "internal_rpc_ca_file"
+				}
+
+				https {
+					cert_file = "https_cert_file"
+					tls_min_version = "tls13"
+				}
+
+				grpc {
+					verify_incoming = false
+					tls_cipher_suites = "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA"
+				}
+			}
+		`},
+		json: []string{`
+			{
+				"tls": {
+					"defaults": {
+						"ca_file": "default_ca_file",
+						"ca_path": "default_ca_path",
+						"cert_file": "default_cert_file",
+						"tls_min_version": "tls12",
+						"tls_cipher_suites": "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256",
+						"verify_incoming": true
+					},
+					"internal_rpc": {
+						"ca_file": "internal_rpc_ca_file"
+					},
+					"https": {
+						"cert_file": "https_cert_file",
+						"tls_min_version": "tls13"
+					},
+					"grpc": {
+						"verify_incoming": false,
+						"tls_cipher_suites": "TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA"
+					}
+				}
+			}
+		`},
+		expected: func(rt *RuntimeConfig) {
+			rt.DataDir = dataDir
+
+			rt.TLS.Domain = "consul."
+			rt.TLS.NodeName = "thehostname"
+
+			rt.TLS.InternalRPC.CAFile = "internal_rpc_ca_file"
+			rt.TLS.InternalRPC.CAPath = "default_ca_path"
+			rt.TLS.InternalRPC.CertFile = "default_cert_file"
+			rt.TLS.InternalRPC.TLSMinVersion = "tls12"
+			rt.TLS.InternalRPC.CipherSuites = []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256}
+			rt.TLS.InternalRPC.VerifyIncoming = true
+
+			rt.TLS.HTTPS.CAFile = "default_ca_file"
+			rt.TLS.HTTPS.CAPath = "default_ca_path"
+			rt.TLS.HTTPS.CertFile = "https_cert_file"
+			rt.TLS.HTTPS.TLSMinVersion = "tls13"
+			rt.TLS.HTTPS.CipherSuites = []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256}
+			rt.TLS.HTTPS.VerifyIncoming = true
+
+			rt.TLS.GRPC.CAFile = "default_ca_file"
+			rt.TLS.GRPC.CAPath = "default_ca_path"
+			rt.TLS.GRPC.CertFile = "default_cert_file"
+			rt.TLS.GRPC.TLSMinVersion = "tls12"
+			rt.TLS.GRPC.CipherSuites = []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA}
+			rt.TLS.GRPC.VerifyIncoming = false
+		},
+	})
+	run(t, testCase{
+		desc: "tls.internal_rpc.verify_server_hostname implies tls.internal_rpc.verify_outgoing",
+		args: []string{
+			`-data-dir=` + dataDir,
+		},
+		json: []string{`
+			{
+				"tls": {
+					"internal_rpc": {
+						"verify_server_hostname": true
+					}
+				}
+			}
+		`},
+		hcl: []string{`
+			tls {
+				internal_rpc {
+					verify_server_hostname = true
+				}
+			}
+		`},
+		expected: func(rt *RuntimeConfig) {
+			rt.DataDir = dataDir
+
+			rt.TLS.Domain = "consul."
+			rt.TLS.NodeName = "thehostname"
+
+			rt.TLS.InternalRPC.VerifyServerHostname = true
+			rt.TLS.InternalRPC.VerifyOutgoing = true
+		},
+	})
 }
 
 func (tc testCase) run(format string, dataDir string) func(t *testing.T) {
@@ -5965,6 +6081,43 @@ func TestLoad_FullConfig(t *testing.T) {
 				Expiration: 15 * time.Second,
 				Name:       "ftO6DySn", // notice this is the same as the metrics prefix
 			},
+		},
+		TLS: tlsutil.Config{
+			InternalRPC: tlsutil.InternalRPCListenerConfig{
+				ListenerConfig: tlsutil.ListenerConfig{
+					VerifyIncoming: true,
+					CAFile:         "mKl19Utl",
+					CAPath:         "lOp1nhPa",
+					CertFile:       "dfJ4oPln",
+					KeyFile:        "aL1Knkpo",
+					TLSMinVersion:  "lPo1MklP",
+					CipherSuites:   []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA, tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256},
+				},
+				VerifyOutgoing:       true,
+				VerifyServerHostname: true,
+			},
+			GRPC: tlsutil.ListenerConfig{
+				VerifyIncoming: true,
+				CAFile:         "lOp1nhJk",
+				CAPath:         "fLponKpl",
+				CertFile:       "a674klPn",
+				KeyFile:        "1y4prKjl",
+				TLSMinVersion:  "lPo4fNkl",
+				CipherSuites:   []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA, tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256},
+			},
+			HTTPS: tlsutil.ListenerConfig{
+				VerifyIncoming: true,
+				CAFile:         "7Yu1PolM",
+				CAPath:         "nu4PlHzn",
+				CertFile:       "1yrhPlMk",
+				KeyFile:        "1bHapOkL",
+				TLSMinVersion:  "mK14iOpz",
+				CipherSuites:   []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA, tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256},
+			},
+			NodeName:                "otlLxGaI",
+			ServerName:              "4Hrplbnm",
+			Domain:                  "7W1xXSqd",
+			EnableAgentTLSForChecks: true,
 		},
 		TLSCipherSuites:             []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA, tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256},
 		TLSMinVersion:               "pAOWafkR",

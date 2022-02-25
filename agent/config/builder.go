@@ -1092,6 +1092,8 @@ func (b *builder) build() (rt RuntimeConfig, err error) {
 		Watches:                     c.Watches,
 	}
 
+	rt.TLS = b.buildTLSConfig(rt, c.TLS)
+
 	rt.UseStreamingBackend = boolValWithDefault(c.UseStreamingBackend, true)
 
 	if c.RaftBoltDBConfig != nil {
@@ -2472,4 +2474,65 @@ func validateAbsoluteURLPath(p string) error {
 	}
 
 	return nil
+}
+
+func (b *builder) buildTLSConfig(rt RuntimeConfig, t *TLS) tlsutil.Config {
+	var c tlsutil.Config
+
+	if t == nil {
+		return c
+	}
+
+	defaults := t.Defaults
+	if defaults == nil {
+		defaults = &TLSListener{}
+	}
+	defaultCipherSuites := b.tlsCipherSuites("tls.defaults.tls_cipher_suites", defaults.TLSCipherSuites)
+
+	mapCommon := func(name string, src *TLSListener, dst *tlsutil.ListenerConfig) {
+		if src == nil {
+			src = &TLSListener{}
+		}
+
+		dst.CAPath = stringValWithDefault(src.CAPath, stringVal(defaults.CAPath))
+		dst.CAFile = stringValWithDefault(src.CAFile, stringVal(defaults.CAFile))
+		dst.CertFile = stringValWithDefault(src.CertFile, stringVal(defaults.CertFile))
+		dst.KeyFile = stringValWithDefault(src.KeyFile, stringVal(defaults.KeyFile))
+		dst.TLSMinVersion = stringValWithDefault(src.TLSMinVersion, stringVal(defaults.TLSMinVersion))
+		dst.VerifyIncoming = boolValWithDefault(src.VerifyIncoming, boolVal(defaults.VerifyIncoming))
+
+		if src.TLSCipherSuites == nil {
+			dst.CipherSuites = defaultCipherSuites
+		} else {
+			dst.CipherSuites = b.tlsCipherSuites(
+				fmt.Sprintf("tls.%s.tls_cipher_suites", name),
+				src.TLSCipherSuites,
+			)
+		}
+	}
+
+	mapCommon("internal_rpc", t.InternalRPC, &c.InternalRPC.ListenerConfig)
+	mapCommon("https", t.HTTPS, &c.HTTPS)
+	mapCommon("grpc", t.GRPC, &c.GRPC)
+
+	if t.InternalRPC != nil {
+		c.InternalRPC.VerifyServerHostname = boolVal(t.InternalRPC.VerifyServerHostname)
+		c.InternalRPC.VerifyOutgoing = boolVal(t.InternalRPC.VerifyOutgoing)
+		c.ServerName = stringVal(t.InternalRPC.ServerName)
+	}
+
+	// Setting only verify_server_hostname is documented to imply verify_outgoing.
+	// If it doesn't then we risk sending communication over plain TCP when we
+	// documented it as forcing TLS for RPCs. Enforce this here rather than in
+	// several different places through the code that need to reason about it.
+	//
+	// See: CVE-2018-19653
+	c.InternalRPC.VerifyOutgoing = c.InternalRPC.VerifyOutgoing || c.InternalRPC.VerifyServerHostname
+
+	c.NodeName = rt.NodeName
+	c.Domain = rt.DNSDomain
+	c.EnableAgentTLSForChecks = rt.EnableAgentTLSForChecks
+	c.AutoTLS = rt.AutoEncryptTLS || rt.AutoConfig.Enabled
+
+	return c
 }

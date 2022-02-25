@@ -1332,6 +1332,9 @@ type RuntimeConfig struct {
 	// flag: -join-wan string -join-wan string
 	StartJoinAddrsWAN []string
 
+	// TODO.
+	TLS tlsutil.Config
+
 	// TLSCipherSuites is used to specify the list of supported ciphersuites.
 	//
 	// The values should be a list of the following values:

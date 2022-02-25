@@ -353,6 +353,47 @@
     "StartJoinAddrsWAN": [],
     "SyncCoordinateIntervalMin": "0s",
     "SyncCoordinateRateTarget": 0,
+    "TLS": {
+        "AutoTLS": false,
+        "Domain": "",
+        "EnableAgentTLSForChecks": false,
+        "GRPC": {
+            "CAFile": "",
+            "CAPath": "",
+            "CertFile": "",
+            "CipherSuites": [],
+            "KeyFile": "hidden",
+            "PreferServerCipherSuites": false,
+            "TLSMinVersion": "",
+            "VerifyIncoming": false
+        },
+        "HTTPS": {
+            "CAFile": "",
+            "CAPath": "",
+            "CertFile": "",
+            "CipherSuites": [],
+            "KeyFile": "hidden",
+            "PreferServerCipherSuites": false,
+            "TLSMinVersion": "",
+            "VerifyIncoming": false
+        },
+        "InternalRPC": {
+            "ListenerConfig": {
+                "CAFile": "",
+                "CAPath": "",
+                "CertFile": "",
+                "CipherSuites": [],
+                "KeyFile": "hidden",
+                "PreferServerCipherSuites": false,
+                "TLSMinVersion": "",
+                "VerifyIncoming": false
+            },
+            "VerifyOutgoing": false,
+            "VerifyServerHostname": false
+        },
+        "NodeName": "",
+        "ServerName": ""
+    },
     "TLSCipherSuites": [],
     "TLSMinVersion": "",
     "TLSPreferServerCipherSuites": false,
