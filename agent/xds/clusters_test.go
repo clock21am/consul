@@ -232,7 +232,8 @@ func TestClustersFromSnapshot(t *testing.T) {
 					},
 				)
 				serviceName := structs.NewServiceName("db", nil)
-				snapshot.ConnectProxy.ServiceConfigs[serviceName] = &structs.ServiceConfigEntry{
+				uid := proxycfg.NewUpstreamIDFromServiceName(serviceName)
+				snapshot.ConnectProxy.ServiceConfigs[uid] = &structs.ServiceConfigEntry{
 					Meta: map[string]string{
 						serverless_plugin.LambdaEnabledTag:            "true",
 						serverless_plugin.LambdaArnTag:                "arn:aws:lambda:us-east-2:977604411308:function:consul-ecs-lambda-test",

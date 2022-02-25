@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -195,7 +196,9 @@ func (s *Server) processDelta(stream ADSDeltaStream, reqCh <-chan *envoy_discove
 				s.ResourceMapMutateFn(newResourceMap)
 			}
 
-			newResourceMap, err = serverless_plugin.MutateIndexedResources(newResourceMap, shared.MakeMutateConfiguration(cfgSnap))
+			if os.Getenv("CONSUL_SERVERLESS_PATCHING_ENABLED") != "" {
+				newResourceMap, err = serverless_plugin.MutateIndexedResources(newResourceMap, shared.MakeMutateConfiguration(cfgSnap))
+			}
 
 			if err != nil {
 				generator.Logger.Warn("Error hacking indexed resources")

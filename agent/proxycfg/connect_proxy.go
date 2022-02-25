@@ -28,7 +28,8 @@ func (s *handlerConnectProxy) initialize(ctx context.Context) (ConfigSnapshot, e
 	snap.ConnectProxy.PreparedQueryEndpoints = make(map[UpstreamID]structs.CheckServiceNodes)
 	snap.ConnectProxy.UpstreamConfig = make(map[UpstreamID]*structs.Upstream)
 	snap.ConnectProxy.PassthroughUpstreams = make(map[UpstreamID]ServicePassthroughAddrs)
-	snap.ConnectProxy.ServiceConfigs = make(map[structs.ServiceName]*structs.ServiceConfigEntry)
+	snap.ConnectProxy.ServiceConfigs = make(map[UpstreamID]*structs.ServiceConfigEntry)
+	snap.ConnectProxy.WatchedServiceConfigs = make(map[UpstreamID]context.CancelFunc)
 
 	// Watch for root changes
 	err := s.cache.Notify(ctx, cachetype.ConnectCARootName, &structs.DCSpecificRequest{
@@ -76,17 +77,6 @@ func (s *handlerConnectProxy) initialize(ctx context.Context) (ConfigSnapshot, e
 		EnterpriseMeta: s.proxyID.EnterpriseMeta,
 	}, svcChecksWatchIDPrefix+structs.ServiceIDString(s.proxyCfg.DestinationServiceID, &s.proxyID.EnterpriseMeta), s.ch)
 	if err != nil {
-		return snap, err
-	}
-
-	err = s.cache.Notify(ctx, cachetype.ConfigEntriesName, &structs.ConfigEntryQuery{
-		Kind:           structs.ServiceDefaults,
-		Datacenter:     s.source.Datacenter,
-		QueryOptions:   structs.QueryOptions{Token: s.token},
-		EnterpriseMeta: s.proxyID.EnterpriseMeta,
-	}, serviceDefaultsConfigEntryID, s.ch)
-	if err != nil {
-		s.logger.Error("failed to register watch for service defaults", "error", err)
 		return snap, err
 	}
 
@@ -195,6 +185,18 @@ func (s *handlerConnectProxy) initialize(ctx context.Context) (ConfigSnapshot, e
 				return snap, fmt.Errorf("failed to watch discovery chain for %s: %v", uid.String(), err)
 			}
 
+			err = s.cache.Notify(ctx, cachetype.ConfigEntryName, &structs.ConfigEntryQuery{
+				Kind:           structs.ServiceDefaults,
+				Name:           u.DestinationName,
+				Datacenter:     s.source.Datacenter,
+				QueryOptions:   structs.QueryOptions{Token: s.token},
+				EnterpriseMeta: s.proxyID.EnterpriseMeta,
+			}, serviceDefaultsConfigEntryID+uid.String(), s.ch)
+			if err != nil {
+				s.logger.Error("failed to register watch for service defaults", "error", err)
+				return snap, err
+			}
+
 		default:
 			return snap, fmt.Errorf("unknown upstream type: %q", u.DestinationType)
 		}
@@ -215,27 +217,19 @@ func (s *handlerConnectProxy) handleUpdate(ctx context.Context, u cache.UpdateEv
 			return fmt.Errorf("invalid type for response: %T", u.Result)
 		}
 		snap.Roots = roots
-	case u.CorrelationID == serviceDefaultsConfigEntryID:
-		configEntries, ok := u.Result.(*structs.IndexedConfigEntries)
+	case strings.HasPrefix(u.CorrelationID, serviceDefaultsConfigEntryID):
+		resp, ok := u.Result.(*structs.ConfigEntryResponse)
 		if !ok {
 			return fmt.Errorf("invalid type for response: %T", u.Result)
 		}
 
-		serviceConfigs := make(map[structs.ServiceName]*structs.ServiceConfigEntry)
-		for _, e := range configEntries.Entries {
-			serviceConfig, ok := e.(*structs.ServiceConfigEntry)
-
-			if !ok {
-				return fmt.Errorf("invalid type for response stuff: %T", u.Result)
+		if resp.Entry != nil {
+			if serviceConfig, ok := resp.Entry.(*structs.ServiceConfigEntry); ok {
+				svc := structs.ServiceNameFromString(strings.TrimPrefix(u.CorrelationID, serviceDefaultsConfigEntryID))
+				uid := NewUpstreamIDFromServiceName(svc)
+				snap.ConnectProxy.ServiceConfigs[uid] = serviceConfig
 			}
-			serviceConfigs[structs.NewServiceName(serviceConfig.Name, nil)] = serviceConfig
 		}
-
-		if !ok {
-			return fmt.Errorf("invalid type for response asf: %T", u.Result)
-		}
-
-		snap.ConnectProxy.ServiceConfigs = serviceConfigs
 	case u.CorrelationID == intentionsWatchID:
 		resp, ok := u.Result.(*structs.IndexedIntentionMatches)
 		if !ok {
@@ -308,6 +302,23 @@ func (s *handlerConnectProxy) handleUpdate(ctx context.Context, u cache.UpdateEv
 			if err != nil {
 				return fmt.Errorf("failed to watch discovery chain for %s: %v", uid, err)
 			}
+
+			if _, ok := snap.ConnectProxy.WatchedServiceConfigs[NewUpstreamIDFromServiceName(svc)]; !ok {
+				ctx, cancel := context.WithCancel(ctx)
+				err = s.cache.Notify(ctx, cachetype.ConfigEntryName, &structs.ConfigEntryQuery{
+					Kind:           structs.ServiceDefaults,
+					Name:           svc.Name,
+					Datacenter:     s.source.Datacenter,
+					QueryOptions:   structs.QueryOptions{Token: s.token},
+					EnterpriseMeta: s.proxyID.EnterpriseMeta,
+				}, serviceDefaultsConfigEntryID+uid.String(), s.ch)
+				if err != nil {
+					cancel()
+					return fmt.Errorf("failed to register watch for service defaults for %s: %v", uid, err)
+				}
+				snap.ConnectProxy.WatchedServiceConfigs[uid] = cancel
+			}
+
 		}
 		snap.ConnectProxy.IntentionUpstreams = seenUpstreams
 
@@ -340,6 +351,15 @@ func (s *handlerConnectProxy) handleUpdate(ctx context.Context, u cache.UpdateEv
 					cancelFn()
 				}
 				delete(snap.ConnectProxy.WatchedGateways, uid)
+			}
+		}
+		for uid, cancelFn := range snap.ConnectProxy.WatchedServiceConfigs {
+			if upstream, ok := snap.ConnectProxy.UpstreamConfig[uid]; ok && upstream.Datacenter != "" && upstream.Datacenter != s.source.Datacenter {
+				continue
+			}
+			if _, ok := seenUpstreams[uid]; !ok {
+				cancelFn()
+				delete(snap.ConnectProxy.WatchedServiceConfigs, uid)
 			}
 		}
 		for uid := range snap.ConnectProxy.WatchedGatewayEndpoints {

@@ -65,7 +65,7 @@ func TestCacheWithTypes(t testing.T, types *TestCacheTypes) *cache.Cache {
 	c.RegisterType(cachetype.PreparedQueryName, types.query)
 	c.RegisterType(cachetype.CompiledDiscoveryChainName, types.compiledChain)
 	c.RegisterType(cachetype.ServiceHTTPChecksName, types.serviceHTTPChecks)
-	c.RegisterType(cachetype.ConfigEntriesName, types.configEntries)
+	c.RegisterType(cachetype.ConfigEntryName, types.configEntries)
 
 	return c
 }
@@ -822,7 +822,7 @@ func testConfigSnapshotDiscoveryChain(t testing.T, variation string, additionalE
 		},
 		Roots: roots,
 		ConnectProxy: configSnapshotConnectProxy{
-			ServiceConfigs: make(map[structs.ServiceName]*structs.ServiceConfigEntry),
+			ServiceConfigs: make(map[UpstreamID]*structs.ServiceConfigEntry),
 			ConfigSnapshotUpstreams: setupTestVariationConfigEntriesAndSnapshot(
 				t, variation, leaf, additionalEntries...,
 			),
