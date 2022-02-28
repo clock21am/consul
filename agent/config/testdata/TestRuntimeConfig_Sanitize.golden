@@ -74,14 +74,11 @@
     "BindAddr": "127.0.0.1",
     "Bootstrap": false,
     "BootstrapExpect": 0,
-    "CAFile": "",
-    "CAPath": "",
     "Cache": {
         "EntryFetchMaxBurst": 42,
         "EntryFetchRate": 0.334,
         "Logger": null
     },
-    "CertFile": "",
     "CheckDeregisterIntervalMin": "0s",
     "CheckOutputMaxSize": 4096,
     "CheckReapInterval": "0s",
@@ -217,7 +214,6 @@
     "HTTPSPort": 0,
     "HTTPUseCache": false,
     "KVMaxValueSize": 1234567800000000,
-    "KeyFile": "hidden",
     "LeaveDrainTime": "0s",
     "LeaveOnTerm": false,
     "Logging": {
@@ -394,8 +390,6 @@
         "NodeName": "",
         "ServerName": ""
     },
-    "TLSCipherSuites": [],
-    "TLSMinVersion": "",
     "TLSPreferServerCipherSuites": false,
     "TaggedAddresses": {},
     "Telemetry": {
@@ -457,11 +451,6 @@
     "UnixSocketMode": "",
     "UnixSocketUser": "",
     "UseStreamingBackend": false,
-    "VerifyIncoming": false,
-    "VerifyIncomingHTTPS": false,
-    "VerifyIncomingRPC": false,
-    "VerifyOutgoing": false,
-    "VerifyServerHostname": false,
     "Version": "",
     "VersionPrerelease": "",
     "Watches": []

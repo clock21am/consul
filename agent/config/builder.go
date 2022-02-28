@@ -746,18 +746,6 @@ func (b *builder) build() (rt RuntimeConfig, err error) {
 	enableRemoteScriptChecks := boolVal(c.EnableScriptChecks)
 	enableLocalScriptChecks := boolValWithDefault(c.EnableLocalScriptChecks, enableRemoteScriptChecks)
 
-	// VerifyServerHostname implies VerifyOutgoing
-	verifyServerName := boolVal(c.VerifyServerHostname)
-	verifyOutgoing := boolVal(c.VerifyOutgoing)
-	if verifyServerName {
-		// Setting only verify_server_hostname is documented to imply
-		// verify_outgoing. If it doesn't then we risk sending communication over TCP
-		// when we documented it as forcing TLS for RPCs. Enforce this here rather
-		// than in several different places through the code that need to reason
-		// about it. (See CVE-2018-19653)
-		verifyOutgoing = true
-	}
-
 	var configEntries []structs.ConfigEntry
 
 	if len(c.ConfigEntries.Bootstrap) > 0 {
@@ -962,9 +950,6 @@ func (b *builder) build() (rt RuntimeConfig, err error) {
 				c.Cache.EntryFetchMaxBurst, cache.DefaultEntryFetchMaxBurst,
 			),
 		},
-		CAFile:                                 stringVal(c.CAFile),
-		CAPath:                                 stringVal(c.CAPath),
-		CertFile:                               stringVal(c.CertFile),
 		CheckUpdateInterval:                    b.durationVal("check_update_interval", c.CheckUpdateInterval),
 		CheckOutputMaxSize:                     intValWithDefault(c.CheckOutputMaxSize, 4096),
 		Checks:                                 checks,
@@ -1010,7 +995,6 @@ func (b *builder) build() (rt RuntimeConfig, err error) {
 		GRPCAddrs:                  grpcAddrs,
 		HTTPMaxConnsPerClient:      intVal(c.Limits.HTTPMaxConnsPerClient),
 		HTTPSHandshakeTimeout:      b.durationVal("limits.https_handshake_timeout", c.Limits.HTTPSHandshakeTimeout),
-		KeyFile:                    stringVal(c.KeyFile),
 		KVMaxValueSize:             uint64Val(c.Limits.KVMaxValueSize),
 		LeaveDrainTime:             b.durationVal("performance.leave_drain_time", c.Performance.LeaveDrainTime),
 		LeaveOnTerm:                leaveOnTerm,
@@ -1074,8 +1058,6 @@ func (b *builder) build() (rt RuntimeConfig, err error) {
 		SkipLeaveOnInt:              skipLeaveOnInt,
 		StartJoinAddrsLAN:           b.expandAllOptionalAddrs("start_join", c.StartJoinAddrsLAN),
 		StartJoinAddrsWAN:           b.expandAllOptionalAddrs("start_join_wan", c.StartJoinAddrsWAN),
-		TLSCipherSuites:             b.tlsCipherSuites("tls_cipher_suites", c.TLSCipherSuites),
-		TLSMinVersion:               stringVal(c.TLSMinVersion),
 		TLSPreferServerCipherSuites: boolVal(c.TLSPreferServerCipherSuites),
 		TaggedAddresses:             c.TaggedAddresses,
 		TranslateWANAddrs:           boolVal(c.TranslateWANAddrs),
@@ -1084,15 +1066,10 @@ func (b *builder) build() (rt RuntimeConfig, err error) {
 		UnixSocketGroup:             stringVal(c.UnixSocket.Group),
 		UnixSocketMode:              stringVal(c.UnixSocket.Mode),
 		UnixSocketUser:              stringVal(c.UnixSocket.User),
-		VerifyIncoming:              boolVal(c.VerifyIncoming),
-		VerifyIncomingHTTPS:         boolVal(c.VerifyIncomingHTTPS),
-		VerifyIncomingRPC:           boolVal(c.VerifyIncomingRPC),
-		VerifyOutgoing:              verifyOutgoing,
-		VerifyServerHostname:        verifyServerName,
 		Watches:                     c.Watches,
 	}
 
-	rt.TLS = b.buildTLSConfig(rt, c.TLS)
+	rt.TLS = b.buildTLSConfig(rt, &c.TLS)
 
 	rt.UseStreamingBackend = boolValWithDefault(c.UseStreamingBackend, true)
 
@@ -1477,10 +1454,8 @@ func (b *builder) validate(rt RuntimeConfig) error {
 		b.warn("rpc.enable_streaming = true has no effect when not running in server mode")
 	}
 
-	if rt.AutoEncryptAllowTLS {
-		if !rt.VerifyIncoming && !rt.VerifyIncomingRPC {
-			b.warn("if auto_encrypt.allow_tls is turned on, either verify_incoming or verify_incoming_rpc should be enabled. It is necessary to turn it off during a migration to TLS, but it should definitely be turned on afterwards.")
-		}
+	if rt.AutoEncryptAllowTLS && !rt.TLS.InternalRPC.VerifyIncoming {
+		b.warn("if auto_encrypt.allow_tls is turned on, tls.internal_rpc.verify_incoming should be enabled (either explicitly or via tls.defaults.verify_incoming). It is necessary to turn it off during a migration to TLS, but it should definitely be turned on afterwards.")
 	}
 
 	if err := checkLimitsFromMaxConnsPerClient(rt.HTTPMaxConnsPerClient); err != nil {
@@ -2319,7 +2294,7 @@ func (b *builder) validateAutoConfig(rt RuntimeConfig) error {
 
 	// Right now we require TLS as everything we are going to transmit via auto-config is sensitive. Signed Certificates, Tokens
 	// and other encryption keys. This must be transmitted over a secure connection so we don't allow doing otherwise.
-	if !rt.VerifyOutgoing {
+	if !rt.TLS.InternalRPC.VerifyOutgoing {
 		return fmt.Errorf("auto_config.enabled cannot be set without configuring TLS for server communications")
 	}
 
@@ -2366,7 +2341,7 @@ func validateAutoConfigAuthorizer(rt RuntimeConfig) error {
 
 	// Right now we require TLS as everything we are going to transmit via auto-config is sensitive. Signed Certificates, Tokens
 	// and other encryption keys. This must be transmitted over a secure connection so we don't allow doing otherwise.
-	if rt.CertFile == "" {
+	if rt.TLS.InternalRPC.CertFile == "" {
 		return fmt.Errorf("auto_config.authorization.enabled cannot be set without providing a TLS certificate for the server")
 	}
 
@@ -2483,23 +2458,15 @@ func (b *builder) buildTLSConfig(rt RuntimeConfig, t *TLS) tlsutil.Config {
 		return c
 	}
 
-	defaults := t.Defaults
-	if defaults == nil {
-		defaults = &TLSListener{}
-	}
-	defaultCipherSuites := b.tlsCipherSuites("tls.defaults.tls_cipher_suites", defaults.TLSCipherSuites)
+	defaultCipherSuites := b.tlsCipherSuites("tls.defaults.tls_cipher_suites", t.Defaults.TLSCipherSuites)
 
-	mapCommon := func(name string, src *TLSListener, dst *tlsutil.ListenerConfig) {
-		if src == nil {
-			src = &TLSListener{}
-		}
-
-		dst.CAPath = stringValWithDefault(src.CAPath, stringVal(defaults.CAPath))
-		dst.CAFile = stringValWithDefault(src.CAFile, stringVal(defaults.CAFile))
-		dst.CertFile = stringValWithDefault(src.CertFile, stringVal(defaults.CertFile))
-		dst.KeyFile = stringValWithDefault(src.KeyFile, stringVal(defaults.KeyFile))
-		dst.TLSMinVersion = stringValWithDefault(src.TLSMinVersion, stringVal(defaults.TLSMinVersion))
-		dst.VerifyIncoming = boolValWithDefault(src.VerifyIncoming, boolVal(defaults.VerifyIncoming))
+	mapCommon := func(name string, src TLSListener, dst *tlsutil.ListenerConfig) {
+		dst.CAPath = stringValWithDefault(src.CAPath, stringVal(t.Defaults.CAPath))
+		dst.CAFile = stringValWithDefault(src.CAFile, stringVal(t.Defaults.CAFile))
+		dst.CertFile = stringValWithDefault(src.CertFile, stringVal(t.Defaults.CertFile))
+		dst.KeyFile = stringValWithDefault(src.KeyFile, stringVal(t.Defaults.KeyFile))
+		dst.TLSMinVersion = stringValWithDefault(src.TLSMinVersion, stringVal(t.Defaults.TLSMinVersion))
+		dst.VerifyIncoming = boolValWithDefault(src.VerifyIncoming, boolVal(t.Defaults.VerifyIncoming))
 
 		if src.TLSCipherSuites == nil {
 			dst.CipherSuites = defaultCipherSuites
@@ -2515,11 +2482,11 @@ func (b *builder) buildTLSConfig(rt RuntimeConfig, t *TLS) tlsutil.Config {
 	mapCommon("https", t.HTTPS, &c.HTTPS)
 	mapCommon("grpc", t.GRPC, &c.GRPC)
 
-	if t.InternalRPC != nil {
-		c.InternalRPC.VerifyServerHostname = boolVal(t.InternalRPC.VerifyServerHostname)
-		c.InternalRPC.VerifyOutgoing = boolVal(t.InternalRPC.VerifyOutgoing)
-		c.ServerName = stringVal(t.InternalRPC.ServerName)
-	}
+	c.InternalRPC.VerifyServerHostname = boolVal(t.InternalRPC.VerifyServerHostname)
+	c.InternalRPC.VerifyOutgoing = boolVal(t.InternalRPC.VerifyOutgoing)
+
+	// TODO: understand what this option actually does better.
+	c.ServerName = stringVal(t.InternalRPC.ServerName)
 
 	// Setting only verify_server_hostname is documented to imply verify_outgoing.
 	// If it doesn't then we risk sending communication over plain TCP when we

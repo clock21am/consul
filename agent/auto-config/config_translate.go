@@ -91,6 +91,8 @@ func translateConfig(c *pbconfig.Config) config.Config {
 		result.TLSMinVersion = stringPtrOrNil(t.MinVersion)
 		result.TLSCipherSuites = stringPtrOrNil(t.CipherSuites)
 		result.TLSPreferServerCipherSuites = &t.PreferServerCipherSuites
+
+		// TODO: Map to the new defaults block.
 	}
 
 	return result

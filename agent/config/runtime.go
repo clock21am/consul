@@ -377,24 +377,6 @@ type RuntimeConfig struct {
 	// Cache represent cache configuration of agent
 	Cache cache.Options
 
-	// CAFile is a path to a certificate authority file. This is used with
-	// VerifyIncoming or VerifyOutgoing to verify the TLS connection.
-	//
-	// hcl: ca_file = string
-	CAFile string
-
-	// CAPath is a path to a directory of certificate authority files. This is
-	// used with VerifyIncoming or VerifyOutgoing to verify the TLS connection.
-	//
-	// hcl: ca_path = string
-	CAPath string
-
-	// CertFile is used to provide a TLS certificate that is used for serving
-	// TLS connections. Must be provided to serve TLS connections.
-	//
-	// hcl: cert_file = string
-	CertFile string
-
 	// CheckUpdateInterval controls the interval on which the output of a health check
 	// is updated if there is no change to the state. For example, a check in a steady
 	// state may run every 5 second generating a unique output (timestamp, etc), forcing
@@ -760,12 +742,6 @@ type RuntimeConfig struct {
 	// hcl: ports { https = int }
 	// flags: -https-port int
 	HTTPSPort int
-
-	// KeyFile is used to provide a TLS key that is used for serving TLS
-	// connections. Must be provided to serve TLS connections.
-	//
-	// hcl: key_file = string
-	KeyFile string
 
 	// KVMaxValueSize controls the max allowed value size. If not set defaults
 	// to raft's suggested max value size.
@@ -1355,17 +1331,13 @@ type RuntimeConfig struct {
 	// todo(fs): since they are standardized by IANA.
 	//
 	// hcl: tls_cipher_suites = []string
-	TLSCipherSuites []uint16
-
-	// TLSMinVersion is used to set the minimum TLS version used for TLS
-	// connections. Should be either "tls10", "tls11", "tls12" or "tls13".
-	// Defaults to tls12.
-	//
-	// hcl: tls_min_version = string
-	TLSMinVersion string
+	// TODO: relocate this comment.
+	// TLSCipherSuites []uint16
 
 	// TLSPreferServerCipherSuites specifies whether to prefer the server's
 	// cipher suite over the client cipher suites.
+	//
+	// TODO: emit a deprecation warning.
 	//
 	// hcl: tls_prefer_server_cipher_suites = (true|false)
 	TLSPreferServerCipherSuites bool
@@ -1423,49 +1395,6 @@ type RuntimeConfig struct {
 	//
 	// hcl: unix_sockets { user = string }
 	UnixSocketUser string
-
-	// VerifyIncoming is used to verify the authenticity of incoming
-	// connections. This means that TCP requests are forbidden, only allowing
-	// for TLS. TLS connections must match a provided certificate authority.
-	// This can be used to force client auth.
-	//
-	// hcl: verify_incoming = (true|false)
-	VerifyIncoming bool
-
-	// VerifyIncomingHTTPS is used to verify the authenticity of incoming HTTPS
-	// connections. This means that TCP requests are forbidden, only allowing
-	// for TLS. TLS connections must match a provided certificate authority.
-	// This can be used to force client auth.
-	//
-	// hcl: verify_incoming_https = (true|false)
-	VerifyIncomingHTTPS bool
-
-	// VerifyIncomingRPC is used to verify the authenticity of incoming RPC
-	// connections. This means that TCP requests are forbidden, only allowing
-	// for TLS. TLS connections must match a provided certificate authority.
-	// This can be used to force client auth.
-	//
-	// hcl: verify_incoming_rpc = (true|false)
-	VerifyIncomingRPC bool
-
-	// VerifyOutgoing is used to verify the authenticity of outgoing
-	// connections. This means that TLS requests are used. TLS connections must
-	// match a provided certificate authority. This is used to verify
-	// authenticity of server nodes.
-	//
-	// hcl: verify_outgoing = (true|false)
-	VerifyOutgoing bool
-
-	// VerifyServerHostname is used to enable hostname verification of servers.
-	// This ensures that the certificate presented is valid for
-	// server.<datacenter>.<domain>. This prevents a compromised client from
-	// being restarted as a server, and then intercepting request traffic as
-	// well as being added as a raft peer. This should be enabled by default
-	// with VerifyOutgoing, but for legacy reasons we cannot break existing
-	// clients.
-	//
-	// hcl: verify_server_hostname = (true|false)
-	VerifyServerHostname bool
 
 	// Watches are used to monitor various endpoints and to invoke a
 	// handler to act appropriately. These are managed entirely in the
@@ -1675,7 +1604,8 @@ func (c *RuntimeConfig) ConnectCAConfiguration() (*structs.CAConfiguration, erro
 func (c *RuntimeConfig) APIConfig(includeClientCerts bool) (*api.Config, error) {
 	cfg := &api.Config{
 		Datacenter: c.Datacenter,
-		TLSConfig:  api.TLSConfig{InsecureSkipVerify: !c.VerifyOutgoing},
+		// TODO: what should we do about the fact HTTPS doesn't have a VerifyOutgoing setting anymore?
+		TLSConfig: api.TLSConfig{InsecureSkipVerify: false},
 	}
 
 	unixAddr, httpAddr, httpsAddr := c.ClientAddress()
@@ -1683,11 +1613,11 @@ func (c *RuntimeConfig) APIConfig(includeClientCerts bool) (*api.Config, error) 
 	if httpsAddr != "" {
 		cfg.Address = httpsAddr
 		cfg.Scheme = "https"
-		cfg.TLSConfig.CAFile = c.CAFile
-		cfg.TLSConfig.CAPath = c.CAPath
+		cfg.TLSConfig.CAFile = c.TLS.HTTPS.CAFile
+		cfg.TLSConfig.CAPath = c.TLS.HTTPS.CAPath
 		if includeClientCerts {
-			cfg.TLSConfig.CertFile = c.CertFile
-			cfg.TLSConfig.KeyFile = c.KeyFile
+			cfg.TLSConfig.CertFile = c.TLS.HTTPS.CertFile
+			cfg.TLSConfig.KeyFile = c.TLS.HTTPS.KeyFile
 		}
 	} else if httpAddr != "" {
 		cfg.Address = httpAddr
@@ -1710,50 +1640,6 @@ func (c *RuntimeConfig) APIConfig(includeClientCerts bool) (*api.Config, error) 
 // time.Duration values are formatted to improve readability.
 func (c *RuntimeConfig) Sanitized() map[string]interface{} {
 	return sanitize("rt", reflect.ValueOf(c)).Interface().(map[string]interface{})
-}
-
-func (c *RuntimeConfig) ToTLSUtilConfig() tlsutil.Config {
-	return tlsutil.Config{
-		InternalRPC: tlsutil.InternalRPCListenerConfig{
-			ListenerConfig: tlsutil.ListenerConfig{
-				VerifyIncoming:           c.VerifyIncoming || c.VerifyIncomingRPC,
-				CAFile:                   c.CAFile,
-				CAPath:                   c.CAPath,
-				CertFile:                 c.CertFile,
-				KeyFile:                  c.KeyFile,
-				TLSMinVersion:            c.TLSMinVersion,
-				CipherSuites:             c.TLSCipherSuites,
-				PreferServerCipherSuites: c.TLSPreferServerCipherSuites,
-			},
-			VerifyOutgoing:       c.VerifyOutgoing,
-			VerifyServerHostname: c.VerifyServerHostname,
-		},
-		HTTPS: tlsutil.ListenerConfig{
-			VerifyIncoming:           c.VerifyIncoming || c.VerifyIncomingHTTPS,
-			CAFile:                   c.CAFile,
-			CAPath:                   c.CAPath,
-			CertFile:                 c.CertFile,
-			KeyFile:                  c.KeyFile,
-			TLSMinVersion:            c.TLSMinVersion,
-			CipherSuites:             c.TLSCipherSuites,
-			PreferServerCipherSuites: c.TLSPreferServerCipherSuites,
-		},
-		GRPC: tlsutil.ListenerConfig{
-			VerifyIncoming:           false,
-			CAFile:                   c.CAFile,
-			CAPath:                   c.CAPath,
-			CertFile:                 c.CertFile,
-			KeyFile:                  c.KeyFile,
-			TLSMinVersion:            c.TLSMinVersion,
-			CipherSuites:             c.TLSCipherSuites,
-			PreferServerCipherSuites: c.TLSPreferServerCipherSuites,
-		},
-		NodeName:                c.NodeName,
-		Domain:                  c.DNSDomain,
-		ServerName:              c.ServerName,
-		EnableAgentTLSForChecks: c.EnableAgentTLSForChecks,
-		AutoTLS:                 c.AutoEncryptTLS || c.AutoConfig.Enabled,
-	}
 }
 
 // isSecret determines whether a field name represents a field which
